@@ -3,6 +3,7 @@ linker = "clang"
 rustflags = [
     "-C",
     "link-arg=-fuse-ld=mold",
+    
     # (Nightly) Make the current crate share its generic instantiations
     "-Zshare-generics=y",
 ]

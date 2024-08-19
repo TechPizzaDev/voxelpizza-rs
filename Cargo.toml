@@ -1,9 +1,12 @@
-cargo-features = ["edition2024", "codegen-backend"]
+cargo-features = ["edition2024"]
 
 [package]
 name = "voxelpizza-rs"
 version = "0.1.0"
 edition = "2024"
+
+[features]
+trace = ["bevy/trace_chrome"]
 
 [workspace]
 resolver = "2" # Important! wgpu/Bevy needs this!
@@ -16,5 +19,21 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
+[dependencies.bevy]
+version = "0.14"
+features = ["file_watcher"]
+
 [dependencies]
-bevy = { version = "0.14", features = ["dynamic_linking"] }
+bytemuck = "1.16.1"
+rand = "0.8.5"
+rand_xoshiro = "0.6.0"
+smooth-bevy-cameras = "0.12"
+
+[[example]]
+name = "wave"
+path = "examples/wave.rs"
+
+[[example]]
+name = "bloom"
+path = "examples/bloom.rs"
+required-features = ["bevy/tonemapping_luts"]
