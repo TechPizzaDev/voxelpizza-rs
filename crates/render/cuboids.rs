@@ -1,6 +1,5 @@
 use bevy::{
-    prelude::*,
-    render::{primitives::Aabb, render_resource::ShaderType, sync_world::SyncToRenderWorld},
+    math::Vec3A, prelude::*, render::{primitives::Aabb, render_resource::ShaderType, sync_world::SyncToRenderWorld}
 };
 
 /// Value that determines the color of a [`Cuboid`] based on the associated
@@ -72,15 +71,15 @@ impl Cuboids {
         Self { instances }
     }
 
-    /// Automatically creates an [`Aabb`] that bounds all `instances`.
+    /// Create an [`Aabb`] that contains all `instances`.
     pub fn aabb(&self) -> Aabb {
-        let mut min = Vec3::splat(f32::MAX);
-        let mut max = Vec3::splat(f32::MIN);
+        let mut min = Vec3A::splat(f32::MAX);
+        let mut max = Vec3A::splat(f32::MIN);
         for i in self.instances.iter() {
-            min = min.min(i.minimum);
-            max = max.max(i.maximum);
+            min = min.min(i.minimum.into());
+            max = max.max(i.maximum.into());
         }
-        Aabb::from_min_max(min, max)
+        Aabb::from_min_max(min.into(), max.into())
     }
 }
 
