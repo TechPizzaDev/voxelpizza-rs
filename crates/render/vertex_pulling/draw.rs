@@ -158,13 +158,14 @@ impl<P: PhaseItem> RenderCommand<P> for DrawVertexPulledCuboids {
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         use super::index_buffer::{CUBE_INDICES, CUBE_INDICES_HANDLE};
+        
         let entry = buffer_cache.into_inner().entries.get(&item.main_entity()).unwrap();
         let num_cuboids = entry.instance_buffer.get().len().try_into().unwrap();
         let index_buffer = index_buffers
             .into_inner()
             .get(&CUBE_INDICES_HANDLE)
             .unwrap();
-        pass.set_index_buffer(index_buffer.buffer.slice(..), 0, IndexFormat::Uint32);
+        pass.set_index_buffer(index_buffer.buffer.slice(..), 0, IndexFormat::Uint16);
         pass.draw_indexed(0..(CUBE_INDICES.len() as u32), 0, 0..num_cuboids);
         RenderCommandResult::Success
     }

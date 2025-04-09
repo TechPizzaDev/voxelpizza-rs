@@ -55,13 +55,13 @@ pub(crate) fn prepare_cuboid_transforms(
     mut transforms_meta: ResMut<TransformsMeta>,
     mut transform_uniforms: ResMut<DynamicUniformBufferOfCuboidTransforms>,
 ) {
-    let write_transform_buffer_span =
-        bevy::log::info_span!("prepare_cuboids::write_transform_buffer");
+    let write_transform_buffer_span = info_span!("prepare_cuboids::write_transform_buffer");
     write_transform_buffer_span.in_scope(|| {
         transform_uniforms.write_buffer(&render_device, &render_queue);
     });
+    
     if let Some(transforms_binding) = transform_uniforms.binding() {
-        let create_bind_group_span = bevy::log::info_span!("prepare_cuboids::create_bind_group");
+        let create_bind_group_span = info_span!("prepare_cuboids::create_bind_group");
         transforms_meta.transform_buffer_bind_group = create_bind_group_span.in_scope(|| {
             Some(render_device.create_bind_group(
                 "gpu_cuboids_transforms_bind_group",
@@ -80,9 +80,8 @@ pub(crate) fn prepare_cuboids(
     render_queue: Res<RenderQueue>,
     mut cuboid_buffers: ResMut<CuboidBufferCache>,
 ) {
-    let write_instance_buffer_span =
-        bevy::log::info_span!("prepare_cuboids::write_instance_buffer");
-    let create_bind_group_span = bevy::log::info_span!("prepare_cuboids::create_bind_group");
+    let write_instance_buffer_span = info_span!("prepare_cuboids::write_instance_buffer");
+    let create_bind_group_span = info_span!("prepare_cuboids::create_bind_group");
 
     // Write all dirty buffers from the cuboids cache.
     for entry in cuboid_buffers.entries.values_mut() {
