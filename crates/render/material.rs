@@ -30,10 +30,12 @@ pub struct CuboidMaterialId(pub usize);
 #[derive(Clone, Debug, ShaderType)]
 pub struct CuboidMaterial {
     pub color_mode: ColorMode,
+
     /// Nonzero values imply that _only_ cuboid edges will be shaded.
     /// [`VertexPullingRenderPlugin::edges`](crate::VertexPullingRenderPlugin)
     /// must be `true` for this to take effect.
     pub wireframe: u32,
+    
     #[align(16)]
     pub scalar_hue: ScalarHueOptions,
 

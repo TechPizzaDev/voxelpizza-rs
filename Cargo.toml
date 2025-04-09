@@ -1,15 +1,12 @@
-cargo-features = ["edition2024"]
-
-[package]
-name = "voxelpizza-rs"
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[features]
-trace = ["bevy/trace_chrome"]
-
 [workspace]
 resolver = "2" # Important! wgpu/Bevy needs this!
+members = [
+  "crates/*",
+]
 
 # Enable a small amount of optimization in debug mode.
 [profile.dev]
@@ -17,23 +14,17 @@ opt-level = 1
 
 # Enable a large amount of optimization in debug mode for dependencies.
 [profile.dev.package."*"]
-opt-level = 3
+opt-level = 2
 
-[dependencies.bevy]
-version = "0.14"
-features = ["file_watcher"]
+[workspace.dependencies.bevy]
+version = "0.15"
+features = ["file_watcher", "dynamic_linking"]
 
-[dependencies]
-bytemuck = "1.16.1"
+[workspace.dependencies]
+bytemuck = "1.16"
 rand = "0.8.5"
-rand_xoshiro = "0.6.0"
-smooth-bevy-cameras = "0.12"
-
-[[example]]
-name = "wave"
-path = "examples/wave.rs"
-
-[[example]]
-name = "bloom"
-path = "examples/bloom.rs"
-required-features = ["bevy/tonemapping_luts"]
+rand_xoshiro = "0.6"
+smooth-bevy-cameras = "0.13"
+num-traits = "0.2"
+seq-macro = "0.3"
+hashbrown = "0.15"

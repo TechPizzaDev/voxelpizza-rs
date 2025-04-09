@@ -1,11 +1,11 @@
 use bevy::{
     core_pipeline::{
-        bloom::{BloomCompositeMode, BloomPrefilterSettings, BloomSettings},
+        bloom::Bloom,
         tonemapping::Tonemapping,
     },
-    prelude::*,
+    prelude::*, render::sync_world::SyncToRenderWorld,
 };
-use voxelpizza_rs::{Cuboid, CuboidMaterialId, Cuboids, VertexPullingRenderPlugin};
+use render::{Cuboid, CuboidMaterialId, Cuboids, VertexPullingRenderPlugin};
 use smooth_bevy_cameras::{controllers::fps::*, LookTransformPlugin};
 
 fn main() {
@@ -14,7 +14,6 @@ fn main() {
             watch_for_changes_override: Some(true),
             ..Default::default()
         }))
-        .insert_resource(Msaa::Off)
         .insert_resource(ClearColor(Color::BLACK))
         .add_plugins((
             VertexPullingRenderPlugin { outlines: true },
@@ -53,7 +52,7 @@ fn setup(mut commands: Commands) {
     let aabb = cuboids.aabb();
     commands
         .spawn(SpatialBundle::default())
-        .insert((cuboids, aabb, CuboidMaterialId(0)));
+        .insert((cuboids, aabb, CuboidMaterialId(0), SyncToRenderWorld));
 
     commands
         .spawn((
@@ -65,23 +64,18 @@ fn setup(mut commands: Commands) {
                 tonemapping: Tonemapping::TonyMcMapface,
                 ..default()
             },
-            BloomSettings {
+            Bloom {
                 intensity: 0.2,
-                high_pass_frequency: 1.0,
                 low_frequency_boost: 0.8,
                 low_frequency_boost_curvature: 0.7,
-                prefilter_settings: BloomPrefilterSettings {
-                    threshold: 0.0,
-                    threshold_softness: 0.0,
-                },
-                composite_mode: BloomCompositeMode::EnergyConserving,
+                ..default()
             },
         ))
         .insert(FpsCameraBundle::new(
             FpsCameraController {
                 translate_sensitivity: 10.0,
                 enabled: false,
-                ..Default::default()
+                ..default()
             },
             Vec3::splat(10.0),
             Vec3::ZERO,

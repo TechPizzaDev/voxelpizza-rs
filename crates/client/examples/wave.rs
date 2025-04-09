@@ -1,6 +1,6 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, render::sync_world::SyncToRenderWorld};
 use smooth_bevy_cameras::{controllers::fps::*, LookTransformPlugin};
-use voxelpizza_rs::{
+use render::{
     Cuboid, CuboidMaterial, CuboidMaterialId, CuboidMaterialMap, Cuboids,
     VertexPullingRenderPlugin, COLOR_MODE_SCALAR_HUE,
 };
@@ -11,7 +11,6 @@ fn main() {
             watch_for_changes_override: Some(true),
             ..Default::default()
         }))
-        .insert_resource(Msaa::Off)
         .add_plugins((
             VertexPullingRenderPlugin { outlines: true },
             LookTransformPlugin,
@@ -56,7 +55,7 @@ fn setup(mut commands: Commands, mut material_map: ResMut<CuboidMaterialMap>) {
             let aabb = cuboids.aabb();
             commands
                 .spawn(SpatialBundle::default())
-                .insert((cuboids, aabb, material_id));
+                .insert((cuboids, aabb, material_id, SyncToRenderWorld));
         }
     }
 
@@ -76,7 +75,7 @@ fn setup(mut commands: Commands, mut material_map: ResMut<CuboidMaterialMap>) {
 
 fn update_scalar_hue_options(time: Res<Time>, mut material_map: ResMut<CuboidMaterialMap>) {
     let material = material_map.get_mut(CuboidMaterialId(1));
-    let tv = 1000.0 * (time.elapsed_seconds().sin() + 1.0);
+    let tv = 1000.0 * (time.elapsed_secs().sin() + 1.0);
     material.scalar_hue.max_visible = tv;
     material.scalar_hue.clamp_max = tv;
 }

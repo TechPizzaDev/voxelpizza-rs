@@ -2,13 +2,15 @@ use crate::Cuboid;
 
 use bevy::{
     prelude::*,
-    render::render_resource::{BindGroup, StorageBuffer},
-    utils::HashMap,
+    render::{
+        render_resource::{BindGroup, StorageBuffer},
+        sync_world::{MainEntity, MainEntityHashMap},
+    },
 };
 
-#[derive(Default, Resource)]
+#[derive(Resource, Deref, DerefMut, Default)]
 pub(crate) struct CuboidBufferCache {
-    pub entries: HashMap<Entity, CachedCuboidBuffers>,
+    pub entries: MainEntityHashMap<CachedCuboidBuffers>,
 }
 
 #[derive(Default)]
@@ -20,7 +22,7 @@ pub(crate) struct CachedCuboidBuffers {
     pub instance_buffer: StorageBuffer<Vec<Cuboid>>,
     pub instance_buffer_bind_group: Option<BindGroup>,
     pub position: Vec3,
-    pub transform_index: u32,
+    pub transform_index: u32
 }
 
 impl CuboidBufferCache {

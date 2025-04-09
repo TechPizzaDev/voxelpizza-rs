@@ -1,22 +1,24 @@
 use super::buffers::*;
 use super::cuboid_cache::CuboidBufferCache;
-use crate::clipping_planes::*;
-use crate::cuboids::*;
 use crate::CuboidMaterialId;
 use crate::CuboidMaterialMap;
+use crate::clipping_planes::*;
+use crate::cuboids::*;
 
+use bevy::render::sync_world::RenderEntity;
 use bevy::{prelude::*, render::Extract};
 
 pub(crate) fn extract_cuboids(
-    mut prev_extracted_entities_size: Local<usize>,
     mut commands: Commands,
+    mut prev_extracted_entities_size: Local<usize>,
     cuboids: Extract<
         Query<(
             Entity,
+            RenderEntity,
             Ref<Cuboids>,
             &GlobalTransform,
             &CuboidMaterialId,
-            Option<&ViewVisibility>
+            Option<&ViewVisibility>,
         )>,
     >,
     materials: Extract<Res<CuboidMaterialMap>>,
@@ -35,14 +37,8 @@ pub(crate) fn extract_cuboids(
     let materials_indices = materials.write_uniforms(&mut materials_uniforms);
 
     let mut extracted_entities = Vec::with_capacity(*prev_extracted_entities_size);
-    for (
-        entity,
-        cuboids,
-        transform,
-        materials_id,
-        maybe_visibility,
-    ) in cuboids.iter()
-    {
+    
+    for (main_entity, render_entity, cuboids, transform, materials_id, maybe_visibility) in cuboids.iter() {
         // Filter all entities that don't have any instances. If an entity went
         // from non-empty to empty, then it will get culled from the buffer cache.
         if cuboids.instances.is_empty() {
@@ -50,13 +46,13 @@ pub(crate) fn extract_cuboids(
         }
         let instance_buffer_needs_update = cuboids.is_added() || cuboids.is_changed();
 
-        extracted_entities.push((entity, ()));
+        extracted_entities.push((render_entity, ()));
 
         let transform = CuboidsTransform::from_matrix(transform.compute_matrix());
 
         let is_visible = maybe_visibility.map(|vis| vis.get()).unwrap_or(true);
 
-        let entry = cuboid_buffers.entries.entry(entity).or_default();
+        let entry = cuboid_buffers.entries.entry(main_entity.into()).or_default();
         if instance_buffer_needs_update {
             entry.instance_buffer.set(cuboids.instances.clone());
         }

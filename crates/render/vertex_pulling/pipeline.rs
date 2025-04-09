@@ -1,8 +1,9 @@
+use crate::CUBOID_SHADER_HANDLE;
 use crate::clipping_planes::GpuClippingPlaneRanges;
-use crate::{cuboids::CuboidsTransform, CuboidMaterial};
+use crate::{CuboidMaterial, cuboids::CuboidsTransform};
 
 use bevy::render::render_resource::ShaderDefVal;
-use bevy::render::texture::BevyDefault;
+use bevy::render::view::{ExtractedView, ViewTarget};
 use bevy::{
     prelude::*,
     render::{
@@ -10,18 +11,33 @@ use bevy::{
     },
 };
 
-#[derive(Resource)]
-pub(crate) struct CuboidsPipelines {
-    pub pipeline_id: CachedRenderPipelineId,
-    pub hdr_pipeline_id: CachedRenderPipelineId,
+#[derive(Component)]
+pub struct ViewCuboidsPipeline(pub CachedRenderPipelineId);
 
+/// A key that uniquely identifies depth of field pipelines.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CuboidsPipelineKey {
+    /// Whether we're using HDR.
+    pub hdr: bool,
+    /// Whether the render target is multisampled.
+    pub sample_count: u32,
+}
+
+#[derive(Resource)]
+pub(crate) struct CuboidsPipeline {
+    layouts: CuboidsBindGroupLayouts,
+    defs: CuboidsShaderDefs,
+}
+
+#[derive(Resource, Clone)]
+pub(crate) struct CuboidsBindGroupLayouts {
     pub aux_layout: BindGroupLayout,
     pub cuboids_layout: BindGroupLayout,
     pub transforms_layout: BindGroupLayout,
     pub view_layout: BindGroupLayout,
 }
 
-impl FromWorld for CuboidsPipelines {
+impl FromWorld for CuboidsBindGroupLayouts {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
 
@@ -94,35 +110,47 @@ impl FromWorld for CuboidsPipelines {
             }],
         );
 
-        let sample_count = world.resource::<Msaa>().samples();
-        let shader_defs = world.resource::<CuboidsShaderDefs>();
+        Self {
+            view_layout,
+            aux_layout,
+            cuboids_layout,
+            transforms_layout,
+        }
+    }
+}
 
-        let shader = world
-            .resource::<AssetServer>()
-            .load::<Shader>("shaders/vertex_pulling.wgsl");
+impl SpecializedRenderPipeline for CuboidsPipeline {
+    type Key = CuboidsPipelineKey;
 
+    fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
         let layout = vec![
-            view_layout.clone(),
-            aux_layout.clone(),
-            transforms_layout.clone(),
-            cuboids_layout.clone(),
+            self.layouts.view_layout.clone(),
+            self.layouts.aux_layout.clone(),
+            self.layouts.transforms_layout.clone(),
+            self.layouts.cuboids_layout.clone(),
         ];
+
         let vertex = VertexState {
-            shader: shader.clone(),
-            shader_defs: shader_defs.vertex.clone(),
+            shader: CUBOID_SHADER_HANDLE,
+            shader_defs: self.defs.vertex.clone(),
             entry_point: "vertex".into(),
             buffers: vec![],
         };
-        let fragment_target = |texture_format| FragmentState {
-            shader: shader.clone(),
-            shader_defs: shader_defs.fragment.clone(),
+        let fragment = FragmentState {
+            shader: CUBOID_SHADER_HANDLE,
+            shader_defs: self.defs.fragment.clone(),
             entry_point: "fragment".into(),
             targets: vec![Some(ColorTargetState {
-                format: texture_format,
+                format: if key.hdr {
+                    ViewTarget::TEXTURE_FORMAT_HDR
+                } else {
+                    TextureFormat::bevy_default()
+                },
                 blend: Some(BlendState::REPLACE),
                 write_mask: ColorWrites::ALL,
             })],
         };
+
         let primitive = PrimitiveState {
             front_face: FrontFace::Ccw,
             cull_mode: None,
@@ -149,45 +177,48 @@ impl FromWorld for CuboidsPipelines {
             },
         });
         let multisample = MultisampleState {
-            count: sample_count,
+            count: key.sample_count,
             mask: !0,
             alpha_to_coverage_enabled: false,
         };
 
-        let pipeline_descriptor = RenderPipelineDescriptor {
+        RenderPipelineDescriptor {
             label: Some("cuboids_pipeline".into()),
-            layout: layout.clone(),
-            vertex: vertex.clone(),
-            fragment: Some(fragment_target(TextureFormat::bevy_default())),
-            primitive,
-            depth_stencil: depth_stencil.clone(),
-            multisample,
-            push_constant_ranges: Vec::new(),
-        };
-
-        let hdr_pipeline_descriptor = RenderPipelineDescriptor {
-            label: Some("cuboids_hdr_pipeline".into()),
             layout,
             vertex,
-            fragment: Some(fragment_target(TextureFormat::Rgba16Float)),
+            fragment: Some(fragment),
             primitive,
             depth_stencil,
             multisample,
             push_constant_ranges: Vec::new(),
+            zero_initialize_workgroup_memory: false,
+        }
+    }
+}
+
+pub fn prepare_cuboids_pipelines(
+    mut commands: Commands,
+    layouts: Res<CuboidsBindGroupLayouts>,
+    shader_defs: Res<CuboidsShaderDefs>,
+    pipeline_cache: Res<PipelineCache>,
+    mut pipelines: ResMut<SpecializedRenderPipelines<CuboidsPipeline>>,
+    msaa_targets: Query<(Entity, &ExtractedView, &Msaa)>,
+) {
+    for (view_entity, view, msaa) in msaa_targets.iter() {
+        let pipeline = CuboidsPipeline {
+            layouts: layouts.clone(),
+            defs: shader_defs.clone(),
         };
 
-        let pipeline_cache = world.resource_mut::<PipelineCache>();
-        let pipeline_id = pipeline_cache.queue_render_pipeline(pipeline_descriptor);
-        let hdr_pipeline_id = pipeline_cache.queue_render_pipeline(hdr_pipeline_descriptor);
+        let (hdr, sample_count) = (view.hdr, msaa.samples());
 
-        Self {
-            pipeline_id,
-            hdr_pipeline_id,
-            view_layout,
-            aux_layout,
-            cuboids_layout,
-            transforms_layout,
-        }
+        commands
+            .entity(view_entity)
+            .insert(ViewCuboidsPipeline(pipelines.specialize(
+                &pipeline_cache,
+                &pipeline,
+                CuboidsPipelineKey { hdr, sample_count },
+            )));
     }
 }
 

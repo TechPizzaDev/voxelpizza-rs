@@ -1,0 +1,11 @@
+[package]
+name = "render"
+edition.workspace = true
+
+[lib]
+path = "./lib.rs"
+
+[dependencies]
+bevy = { workspace = true }
+
+bytemuck = { workspace = true }

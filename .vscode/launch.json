@@ -7,12 +7,29 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "'client' bin",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=client"
+                ]
+            },
+            "args": [],
+            "env": {
+                "RUST_BACKTRACE": "1",
+                "CARGO_MANIFEST_DIR": "${workspaceFolder}",
+                "LD_LIBRARY_PATH": "/home/techpizza/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/lib:/repos/TechPizzaDev/voxelpizza-rs/target/debug/deps"
+            }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "'bloom' example",
             "cargo": {
                 "args": [
                     "build",
                     "--example=bloom",
-                    "--package=voxelpizza-rs"
+                    "--package=client"
                 ],
                 "filter": {
                     "name": "bloom",
@@ -23,18 +40,19 @@
             "cwd": "${workspaceFolder}",
             "env": {
                 "RUST_BACKTRACE": "1",
-                "CARGO_MANIFEST_DIR" : "${workspaceFolder}"
+                "CARGO_MANIFEST_DIR": "${workspaceFolder}",
+                "LD_LIBRARY_PATH": "/home/techpizza/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/lib:/repos/TechPizzaDev/voxelpizza-rs/target/debug/deps"
             },
         },
         {
             "type": "lldb",
             "request": "launch",
-            "name": "'wave' Example",
+            "name": "'wave' example",
             "cargo": {
                 "args": [
                     "build",
                     "--example=wave",
-                    "--package=voxelpizza-rs"
+                    "--package=client"
                 ],
                 "filter": {
                     "name": "wave",
@@ -45,7 +63,8 @@
             "cwd": "${workspaceFolder}",
             "env": {
                 "RUST_BACKTRACE": "1",
-                "CARGO_MANIFEST_DIR" : "${workspaceFolder}"
+                "CARGO_MANIFEST_DIR": "${workspaceFolder}",
+                "LD_LIBRARY_PATH": "/home/techpizza/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/lib:/repos/TechPizzaDev/voxelpizza-rs/target/debug/deps"
             }
         },
     ]
