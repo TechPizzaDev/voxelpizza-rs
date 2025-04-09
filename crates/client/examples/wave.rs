@@ -1,4 +1,4 @@
-use bevy::{prelude::*, render::sync_world::SyncToRenderWorld};
+use bevy::prelude::*;
 use smooth_bevy_cameras::{controllers::fps::*, LookTransformPlugin};
 use render::{
     Cuboid, CuboidMaterial, CuboidMaterialId, CuboidMaterialMap, Cuboids,
@@ -53,14 +53,12 @@ fn setup(mut commands: Commands, mut material_map: ResMut<CuboidMaterialMap>) {
             }
             let cuboids = Cuboids::new(instances);
             let aabb = cuboids.aabb();
-            commands
-                .spawn(SpatialBundle::default())
-                .insert((cuboids, aabb, material_id, SyncToRenderWorld));
+            commands.spawn((cuboids, aabb, material_id));
         }
     }
 
     commands
-        .spawn(Camera3dBundle::default())
+        .spawn(Camera3d::default())
         .insert(FpsCameraBundle::new(
             FpsCameraController {
                 translate_sensitivity: 200.0,

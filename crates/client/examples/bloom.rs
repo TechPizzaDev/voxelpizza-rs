@@ -3,7 +3,7 @@ use bevy::{
         bloom::Bloom,
         tonemapping::Tonemapping,
     },
-    prelude::*, render::sync_world::SyncToRenderWorld,
+    prelude::*,
 };
 use render::{Cuboid, CuboidMaterialId, Cuboids, VertexPullingRenderPlugin};
 use smooth_bevy_cameras::{controllers::fps::*, LookTransformPlugin};
@@ -50,20 +50,16 @@ fn setup(mut commands: Commands) {
 
     let cuboids = Cuboids::new(cuboids);
     let aabb = cuboids.aabb();
-    commands
-        .spawn(SpatialBundle::default())
-        .insert((cuboids, aabb, CuboidMaterialId(0), SyncToRenderWorld));
+    commands.spawn((cuboids, aabb, CuboidMaterialId(0)));
 
     commands
         .spawn((
-            Camera3dBundle {
-                camera: Camera {
-                    hdr: true,
-                    ..default()
-                },
-                tonemapping: Tonemapping::TonyMcMapface,
+            Camera {
+                hdr: true,
                 ..default()
             },
+            Camera3d::default(),
+            Tonemapping::TonyMcMapface,
             Bloom {
                 intensity: 0.2,
                 low_frequency_boost: 0.8,

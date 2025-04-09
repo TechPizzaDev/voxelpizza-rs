@@ -1,9 +1,7 @@
 use bevy::{
     prelude::*,
-    render::{primitives::Aabb, render_resource::ShaderType},
+    render::{primitives::Aabb, render_resource::ShaderType, sync_world::SyncToRenderWorld},
 };
-
-use crate::CuboidMaterialId;
 
 /// Value that determines the color of a [`Cuboid`] based on the associated
 /// [`CuboidMaterial`](crate::CuboidMaterial).
@@ -40,7 +38,7 @@ impl Cuboid {
             color,
         }
     }
-    
+
     #[inline]
     pub fn make_emissive(&mut self) -> &mut Self {
         self.meta_bits |= 1;
@@ -63,6 +61,7 @@ impl Cuboid {
 
 /// A set of cuboids to be extracted for rendering.
 #[derive(Clone, Component, Debug, Default)]
+#[require(Visibility, Transform, SyncToRenderWorld)]
 pub struct Cuboids {
     /// Instances to be rendered.
     pub instances: Vec<Cuboid>,
@@ -103,11 +102,4 @@ impl CuboidsTransform {
     pub fn position(&self) -> Vec3 {
         self.matrix.col(3).truncate()
     }
-}
-
-#[derive(Bundle)]
-pub struct CuboidsBundle {
-    pub material_id: CuboidMaterialId,
-    pub cuboids: Cuboids,
-    pub spatial: SpatialBundle,
 }
