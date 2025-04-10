@@ -1,11 +1,14 @@
 use super::{cuboid_cache::CuboidBufferCache, index_buffer::GpuCuboidsIndexBuffer};
 use bevy::{
-    ecs::system::{lifetimeless::*, SystemParamItem},
+    ecs::system::{SystemParamItem, lifetimeless::*},
     prelude::*,
     render::{
-        render_asset::RenderAssets, render_phase::{
+        render_asset::RenderAssets,
+        render_phase::{
             PhaseItem, RenderCommand, RenderCommandResult, SetItemPipeline, TrackedRenderPass,
-        }, render_resource::{BindGroup, IndexFormat}, sync_world::MainEntity, view::ViewUniformOffset
+        },
+        render_resource::{BindGroup, IndexFormat},
+        view::ViewUniformOffset,
     },
 };
 
@@ -72,12 +75,10 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetAuxBindGroup<I> {
         (buffer_cache, aux_meta): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let buffer_cache = buffer_cache.into_inner();
-        let aux_meta = aux_meta.into_inner();
         let entry = buffer_cache.entries.get(&item.main_entity()).unwrap();
         pass.set_bind_group(
             I,
-            aux_meta.bind_group.as_ref().unwrap(),
+            aux_meta.into_inner().bind_group.as_ref().unwrap(),
             &[entry.material_index],
         );
         RenderCommandResult::Success
@@ -104,11 +105,11 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetGpuTransformBufferBin
         (buffer_cache, transforms_meta): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let transforms_meta = transforms_meta.into_inner();
-        let entry = buffer_cache.into_inner().entries.get(&item.main_entity()).unwrap();
+        let entry = buffer_cache.entries.get(&item.main_entity()).unwrap();
         pass.set_bind_group(
             I,
             transforms_meta
+                .into_inner()
                 .transform_buffer_bind_group
                 .as_ref()
                 .unwrap(),
@@ -133,7 +134,11 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetGpuCuboidBuffersBindG
         buffer_cache: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let entry = buffer_cache.into_inner().entries.get(&item.main_entity()).unwrap();
+        let entry = buffer_cache
+            .into_inner()
+            .entries
+            .get(&item.main_entity())
+            .unwrap();
         pass.set_bind_group(I, entry.instance_buffer_bind_group.as_ref().unwrap(), &[]);
         RenderCommandResult::Success
     }
@@ -158,8 +163,8 @@ impl<P: PhaseItem> RenderCommand<P> for DrawVertexPulledCuboids {
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         use super::index_buffer::{CUBE_INDICES, CUBE_INDICES_HANDLE};
-        
-        let entry = buffer_cache.into_inner().entries.get(&item.main_entity()).unwrap();
+
+        let entry = buffer_cache.entries.get(&item.main_entity()).unwrap();
         let num_cuboids = entry.instance_buffer.get().len().try_into().unwrap();
         let index_buffer = index_buffers
             .into_inner()
