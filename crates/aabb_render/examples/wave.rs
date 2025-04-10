@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use smooth_bevy_cameras::{controllers::fps::*, LookTransformPlugin};
-use render::{
+use aabb_render::{
     Cuboid, CuboidMaterial, CuboidMaterialId, CuboidMaterialMap, Cuboids,
     VertexPullingRenderPlugin, COLOR_MODE_SCALAR_HUE,
 };

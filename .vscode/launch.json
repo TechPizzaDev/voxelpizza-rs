@@ -29,7 +29,7 @@
                 "args": [
                     "build",
                     "--example=bloom",
-                    "--package=client"
+                    "--package=aabb_render"
                 ],
                 "filter": {
                     "name": "bloom",
@@ -52,7 +52,7 @@
                 "args": [
                     "build",
                     "--example=wave",
-                    "--package=client"
+                    "--package=aabb_render"
                 ],
                 "filter": {
                     "name": "wave",

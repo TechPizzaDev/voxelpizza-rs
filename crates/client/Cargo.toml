@@ -14,9 +14,5 @@ render = { path = "../render" }
 world = { path = "../world" }
 iters = { path = "../iters" }
 
-smooth-bevy-cameras = { workspace = true }
 bevy = { workspace = true }
-
-[[example]]
-name = "bloom"
-required-features = ["bevy/tonemapping_luts"]
+smooth-bevy-cameras = { workspace = true }

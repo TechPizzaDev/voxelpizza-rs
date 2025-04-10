@@ -1,0 +1,16 @@
+[package]
+name = "aabb_render"
+edition.workspace = true
+
+[lib]
+path = "./lib.rs"
+
+[dependencies]
+bevy = { workspace = true }
+smooth-bevy-cameras = { workspace = true }
+
+bytemuck = { workspace = true }
+
+[[example]]
+name = "bloom"
+required-features = ["bevy/tonemapping_luts"]
