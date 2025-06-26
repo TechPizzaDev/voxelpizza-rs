@@ -27,6 +27,7 @@ pub const COLOR_MODE_SCALAR_HUE: ColorMode = 1;
 pub struct CuboidMaterialId(pub usize);
 
 /// Shading options, constant for each draw call.
+#[repr(C)]
 #[derive(Clone, Debug, ShaderType)]
 pub struct CuboidMaterial {
     pub color_mode: ColorMode,
@@ -36,7 +37,10 @@ pub struct CuboidMaterial {
     /// must be `true` for this to take effect.
     pub wireframe: u32,
     
-    #[align(16)]
+    pub _pad0: u32,
+    pub _pad1: u32,
+
+    // TODO: #[shader_align(16)] when encase crate updates
     pub scalar_hue: ScalarHueOptions,
 
     /// An extra factor that multiplies a cuboid's color when the "emissive" bit
@@ -51,6 +55,8 @@ impl Default for CuboidMaterial {
             wireframe: default(),
             scalar_hue: default(),
             emissive_gain: Vec3::splat(30.0),
+            _pad0: 0,
+            _pad1: 1
         }
     }
 }
