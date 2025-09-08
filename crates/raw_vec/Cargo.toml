@@ -1,0 +1,13 @@
+[package]
+name = "raw_vec"
+edition.workspace = true
+
+[lib]
+path = "./lib.rs"
+
+[features]
+panic_immediate_abort = []
+
+[lints.rust]
+dead_code = "allow"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(no_global_oom_handling)'] }

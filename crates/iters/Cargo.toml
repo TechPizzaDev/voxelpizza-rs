@@ -1,0 +1,6 @@
+[package]
+name = "iters"
+edition.workspace = true
+
+[lib]
+path = "./lib.rs"

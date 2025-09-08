@@ -1,0 +1,12 @@
+[package]
+name = "collections"
+edition.workspace = true
+
+[lib]
+path = "./lib.rs"
+
+[dependencies]
+raw_vec = { path = "../raw_vec" }
+
+num-traits = { workspace = true }
+seq-macro = { workspace = true }

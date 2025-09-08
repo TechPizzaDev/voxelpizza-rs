@@ -8,9 +8,9 @@ members = [
   "crates/*",
 ]
 
-# Enable a small amount of optimization in debug mode.
+# TODO: Enable a small amount of optimization in debug mode.
 [profile.dev]
-opt-level = 1
+opt-level = 0
 
 # Enable a large amount of optimization in debug mode for dependencies.
 [profile.dev.package."*"]
@@ -27,4 +27,3 @@ rand_xoshiro = "0.6"
 smooth-bevy-cameras = "0.13"
 num-traits = "0.2"
 seq-macro = "0.3"
-hashbrown = "0.15"
