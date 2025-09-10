@@ -47,7 +47,9 @@ where
     let src_idx = src_offset / values_per_part;
     let src_rem = src_offset % values_per_part;
 
-    let value_mask = value_mask::<E>(bits_per_value).unwrap();
+    // Widen mask here (E -> P), which helps LLVM to vectorize; 
+    // P will never contain bits outside E range, making unwraps no-op.
+    let value_mask = P::from(value_mask::<E>(bits_per_value).unwrap()).unwrap();
     let bits_per_value = bits_per_value.get() as usize;
 
     if src_rem != 0 {
@@ -67,15 +69,11 @@ where
 }
 
 #[inline(always)]
-fn unpack_part<P, E>(dst: &mut [E], part: P, bits_per_value: usize, value_mask: E)
+fn unpack_part<P, E>(dst: &mut [E], part: P, bits_per_value: usize, value_mask: P)
 where
     E: PrimInt,
     P: PrimInt,
 {
-    // Widen mask here (E -> P), which allows LLVM to vectorize; 
-    // P will never contain bits outside E range, making unwraps no-op.
-    let value_mask = P::from(value_mask).unwrap();
-    
     for i in 0..dst.len() {
         let bits = part.unsigned_shr((i * bits_per_value) as u32);
         dst[i] = E::from(bits & value_mask).unwrap();

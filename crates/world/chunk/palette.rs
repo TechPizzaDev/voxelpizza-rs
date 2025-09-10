@@ -5,7 +5,7 @@ use std::{
 };
 
 use collections::{
-    IndexMap, MidCut, PackStorage, PackStorageMut, PackVec, RangeCut,
+    IndexMap, OwnedCut, PackVec,
     pack_span::{PackAccess, PackAccessMut, PackSpan, PartSize},
     pack_vec::{BitsPerValue, ConstBPV, ConstVec, VarBPV},
 };
@@ -79,12 +79,13 @@ impl ChunkPalette {
 
             for z in 0..size.depth {
                 let dst_z = dst_offset.z + z;
-                let dst_idx = get_index_base(dst_bounds.depth, dst_bounds.width, dst_y, dst_z);
-                let dst_slice = dst.cut(dst_idx + dst_offset.x, stride);
+                let dst_idx =
+                    get_index_base(dst_bounds.depth, dst_bounds.width, dst_y, dst_z) + dst_offset.x;
+                let dst_slice = dst.cut(dst_idx..(dst_idx + stride));
 
                 let src_z = offset.z + z;
                 let src_idx = offset.x + get_index_base(depth, width, src_y, src_z);
-                self.get_contiguous_blocks(dst_slice, span.cut_at(src_idx));
+                self.get_contiguous_blocks(dst_slice, span.cut(src_idx..));
             }
         }
     }
@@ -123,7 +124,7 @@ impl ChunkPalette {
             let value = palette[index.to_usize().unwrap()];
             dst[0..len].fill(value);
 
-            src = src.cut_at(len);
+            src = src.cut(len..);
             dst = &mut dst[len..];
         }
     }
@@ -156,22 +157,24 @@ impl ChunkPalette {
 
         if dst_depth == src_depth && dst_depth == self.width().get() {
             for y in 0..dst_height {
-                let src_idx = get_index_base(src_depth, src_width, src_offset.y + y, src_offset.z);
-                let dst_offset = self.get_offset(offset.x, offset.y + y, offset.z);
+                let src_idx = get_index_base(src_depth, src_width, src_offset.y + y, src_offset.z)
+                    + src_offset.x;
+                let dst_offset = self.get_offset(offset.x, offset.y + y, offset.z) + src_offset.x;
                 self.set_contiguous_blocks(
-                    src.cut(src_idx + src_offset.x, stride),
-                    index_buffer.as_span_mut().cut_at(dst_offset),
+                    src.cut(src_idx..(src_idx + stride)),
+                    index_buffer.as_span_mut().cut(dst_offset..),
                 );
             }
         } else {
             for y in 0..dst_height {
                 let src_y = src_offset.y + y;
                 for z in 0..dst_depth {
-                    let src_idx = get_index_base(src_depth, src_width, src_y, src_offset.z + z);
+                    let src_idx = get_index_base(src_depth, src_width, src_y, src_offset.z + z)
+                        + src_offset.x;
                     let dst_offset = self.get_offset(offset.x, offset.y + y, offset.z + z);
                     self.set_contiguous_blocks(
-                        src.cut(src_idx + src_offset.x, stride),
-                        index_buffer.as_span_mut().cut_at(dst_offset),
+                        src.cut(src_idx..(src_idx + stride)),
+                        index_buffer.as_span_mut().cut(dst_offset..),
                     );
                 }
             }
@@ -199,7 +202,9 @@ impl ChunkPalette {
             let len = len.unwrap_or(src.len()); // Rest of source is same value when None
 
             // Copy block indices in bulk.
-            (&mut index_buffer).cut(buf_idx, len).fill(pal_value);
+            (&mut index_buffer)
+                .cut(buf_idx..(buf_idx + len))
+                .fill(pal_value);
 
             src = &src[len..];
             buf_idx += len;
@@ -234,7 +239,10 @@ impl ChunkPalette {
 
     fn fill_contiguous_blocks<T: PrimInt>(&mut self, dst_idx: usize, len: usize, palette_idx: T) {
         //nint changeCount = _storage.AsBitSpan(dstIdx, count).Fill(value, changeTracking);
-        self.data.as_span_mut().cut(dst_idx, len).fill(palette_idx)
+        self.data
+            .as_span_mut()
+            .cut(dst_idx..(dst_idx + len))
+            .fill(palette_idx)
     }
 }
 
@@ -342,8 +350,7 @@ impl ChunkPalette {
     }
 }
 
-fn resize_storage<T: PrimInt>(data: &PackVec<T>, bits_per_value: PartSize) -> PackVec<T>
-{
+fn resize_storage<T: PrimInt>(data: &PackVec<T>, bits_per_value: PartSize) -> PackVec<T> {
     let bpv = VarBPV::new::<T>(bits_per_value);
     let mut new_storage = PackVec::<T>::with_capacity(data.len(), bpv);
 

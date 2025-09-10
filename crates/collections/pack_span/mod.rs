@@ -9,13 +9,18 @@ pub use iter::PackIter;
 
 use std::{
     fmt,
+    hint::assert_unchecked,
     num::NonZeroU8,
-    ops::{Deref, DerefMut, Range},
+    ops::{self, Bound, Deref, DerefMut, Range, RangeBounds},
+    range,
 };
 
 use num_traits::PrimInt;
 
-use crate::{MidCut, RangeCut, SplitCut, pack_vec::BitsPerValue};
+use crate::{
+    OwnedCut, SplitCut,
+    pack_vec::{BitsPerValue, VarBPV},
+};
 
 pub type PartOffset = u8;
 pub type PartSize = NonZeroU8;
@@ -27,7 +32,7 @@ pub struct PartKey {
     pub bit_index: u32,
 }
 
-pub struct PackSpan<S, BPV: BitsPerValue> {
+pub struct PackSpan<S, BPV: BitsPerValue = VarBPV> {
     parts: S,
 
     /// Inclusive offset into the first part.
@@ -126,28 +131,33 @@ where
     S: Deref<Target = [P]>,
 {
     #[inline]
+    pub fn from_parts(
+        parts: S,
+        head_len: PartOffset,
+        tail_len: PartOffset,
+        bpv: BPV,
+    ) -> Result<Self, ()> {
+        if bpv.bits_per_part() > size_of::<P>() * 8 {
+            return Err(());
+        }
+        if value_count(parts.len(), head_len, tail_len, bpv.values_per_part()).is_none() {
+            return Err(());
+        }
+        Ok(Self {
+            parts,
+            head_len,
+            tail_len,
+            bpv,
+        })
+    }
+
+    #[inline]
     pub unsafe fn from_parts_unchecked(
         parts: S,
         head_len: PartOffset,
         tail_len: PartOffset,
         bpv: BPV,
     ) -> Self {
-        debug_assert!(bpv.bits_per_part() <= size_of::<P>() * 8);
-        debug_assert!(
-            value_count(parts.len(), head_len, tail_len, bpv.values_per_part()).is_some()
-        );
-        Self {
-            parts,
-            head_len,
-            tail_len,
-            bpv,
-        }
-    }
-
-    #[inline]
-    pub fn from_parts(parts: S, head_len: PartOffset, tail_len: PartOffset, bpv: BPV) -> Self {
-        assert!(bpv.bits_per_part() <= size_of::<P>() * 8);
-        assert!(value_count(parts.len(), head_len, tail_len, bpv.values_per_part()).is_some());
         Self {
             parts,
             head_len,
@@ -158,52 +168,126 @@ where
 
     #[inline]
     fn part_key(&self, index: usize) -> PartKey {
-        self.bpv.part_key(self.head_len as usize + index)
-    }
-
-    #[inline(always)]
-    fn is_valid_cut_range(&self, start: usize, len: usize) -> bool {
-        if let Some(dst_end) = start.checked_add(len) {
-            let src_len = self.len();
-            dst_end <= src_len
-        } else {
-            false
-        }
+        self.bpv.part_key(index.strict_add(self.head_len as usize))
     }
 
     #[inline]
-    fn get_cut_range(&self, start: usize, len: usize) -> (PartOffset, PartOffset, Range<usize>) {
-        debug_assert!(self.is_valid_cut_range(start, len));
+    fn get_cut_range(
+        &self,
+        range: &impl RangeBounds<usize>,
+    ) -> Result<(PartOffset, PartOffset, Range<usize>), ()> {
+        let len = self.len();
+        let start = start_bound(range);
+        if start > len {
+            return Err(());
+        }
 
-        let vpp = self.bpv.values_per_part().get() as usize;
-        let new_start = self.head_len as usize + start;
+        let end = end_bound(range, len);
+        if end > len {
+            return Err(());
+        }
 
-        let part_start = new_start / vpp;
-        let head_len = (new_start % vpp) as PartOffset;
-
-        let new_end = new_start + len;
-        let part_end = new_end.div_ceil(vpp);
-        let tail_len = (new_end % vpp) as PartOffset;
-
-        let part_range = part_start..part_end;
-        (head_len, tail_len, part_range)
+        Ok(make_cut_range(
+            start,
+            end,
+            self.head_len,
+            self.bpv.values_per_part(),
+        ))
     }
 
-    pub fn iter<E: PrimInt>(&self) -> PackIter<&[P], P, E, BPV> {
-        let start = self.head_len as usize;
-        let end = start.checked_add(self.len()).unwrap();
-        PackIter::from_slice(&self.parts, start, end, self.bpv)
+    pub fn iter<E: PrimInt>(&self) -> PackIter<&[P], E, BPV> {
+        PackIter::from_slice(&self.parts, self.head_len as usize, self.len(), self.bpv)
     }
 
-    pub fn into_iter<E: PrimInt>(self) -> PackIter<S, P, E, BPV> {
-        let start = self.head_len as usize;
-        let end = start.checked_add(self.len()).unwrap();
-        PackIter::from_slice(self.parts, start, end, self.bpv)
+    pub fn into_iter<E: PrimInt>(self) -> PackIter<S, E, BPV> {
+        let len = self.len();
+        PackIter::from_slice(self.parts, self.head_len as usize, len, self.bpv)
     }
 }
 
-impl<'a, 'b, P, BPV: BitsPerValue> SplitCut<usize> for &'b PackSpan<&'a [P], BPV> {
-    type Output = PackSpan<&'a [P], BPV>;
+#[inline(always)]
+fn start_bound(range: &impl RangeBounds<usize>) -> usize {
+    match range.start_bound() {
+        Bound::Included(i) => *i,
+        Bound::Excluded(i) => *i,
+        Bound::Unbounded => 0,
+    }
+}
+
+#[inline(always)]
+fn end_bound(range: &impl RangeBounds<usize>, len: usize) -> usize {
+    match range.end_bound() {
+        Bound::Included(i) => *i,
+        Bound::Excluded(i) => *i,
+        Bound::Unbounded => len,
+    }
+}
+
+macro_rules! impl_owned_cut {
+    ($index:ty) => {
+        impl<S, P, BPV: BitsPerValue> OwnedCut<$index> for PackSpan<S, BPV>
+        where
+            S: Deref<Target = [P]> + OwnedCut<Range<usize>, Output = S>,
+        {
+            type Output = PackSpan<S, BPV>;
+
+            #[inline]
+            fn cut_checked(self, index: $index) -> Option<PackSpan<S, BPV>> {
+                if let Ok((head_len, tail_len, part_range)) = self.get_cut_range(&index) {
+                    let parts = unsafe { self.parts.cut_unchecked(part_range) };
+                    Self::Output::from_parts(parts, head_len, tail_len, self.bpv).ok()
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            unsafe fn cut_unchecked(self, index: $index) -> PackSpan<S, BPV> {
+                let (head_len, tail_len, part_range) = make_cut_range(
+                    start_bound(&index),
+                    end_bound(&index, self.len()),
+                    self.head_len,
+                    self.bpv.values_per_part(),
+                );
+                unsafe {
+                    let parts = self.parts.cut_unchecked(part_range);
+                    Self::Output::from_parts_unchecked(parts, head_len, tail_len, self.bpv)
+                }
+            }
+        }
+
+        impl<'a, 'b, P, BPV: BitsPerValue> OwnedCut<$index> for &'b mut PackSpan<&'a mut [P], BPV> {
+            type Output = PackSpan<&'b mut [P], BPV>;
+
+            #[inline]
+            fn cut_checked(self, index: $index) -> Option<Self::Output> {
+                if let Ok((head_len, tail_len, part_range)) = self.get_cut_range(&index) {
+                    let parts = unsafe { self.parts.cut_unchecked(part_range) };
+                    Self::Output::from_parts(parts, head_len, tail_len, self.bpv).ok()
+                } else {
+                    None
+                }
+            }
+        }
+    };
+}
+
+impl_owned_cut!(ops::Range<usize>);
+impl_owned_cut!(range::Range<usize>);
+impl_owned_cut!(ops::RangeTo<usize>);
+impl_owned_cut!(ops::RangeFrom<usize>);
+impl_owned_cut!(range::RangeFrom<usize>);
+impl_owned_cut!(ops::RangeInclusive<usize>);
+impl_owned_cut!(range::RangeInclusive<usize>);
+impl_owned_cut!(ops::RangeToInclusive<usize>);
+impl_owned_cut!((ops::Bound<usize>, ops::Bound<usize>));
+
+impl<'a, S, P, BPV: BitsPerValue> SplitCut<usize> for &'a PackSpan<S, BPV>
+where
+    S: Deref<Target = [P]>,
+    Self: OwnedCut<Range<usize>, Output = PackSpan<S, BPV>>,
+{
+    type Output = PackSpan<S, BPV>;
 
     #[inline]
     fn split_at_checked(self, mid: usize) -> Option<(Self::Output, Self::Output)> {
@@ -212,142 +296,9 @@ impl<'a, 'b, P, BPV: BitsPerValue> SplitCut<usize> for &'b PackSpan<&'a [P], BPV
             return None;
         }
         unsafe {
-            let head = self.cut_unchecked(0, mid);
-            let tail = self.cut_unchecked(mid, src_len - mid);
+            let head = self.cut_unchecked(0..mid);
+            let tail = self.cut_unchecked(mid..src_len);
             Some((head, tail))
-        }
-    }
-
-    #[inline]
-    unsafe fn split_at_unchecked(self, mid: usize) -> (Self::Output, Self::Output) {
-        let src_len = self.len();
-        debug_assert!(mid <= src_len);
-        unsafe {
-            let head = self.cut_unchecked(0, mid);
-            let tail = self.cut_unchecked(mid, src_len - mid);
-            (head, tail)
-        }
-    }
-}
-
-impl<'a, 'b, P, BPV: BitsPerValue> MidCut<usize> for &'b PackSpan<&'a [P], BPV> {
-    type Output = PackSpan<&'a [P], BPV>;
-
-    #[inline]
-    fn cut_at_checked(self, mid: usize) -> Option<Self::Output> {
-        let len = self.len();
-        if mid > len {
-            return None;
-        }
-        Some(unsafe { self.cut_unchecked(mid, len - mid) })
-    }
-
-    #[inline]
-    unsafe fn cut_at_unchecked(self, mid: usize) -> Self::Output {
-        let len = self.len();
-        debug_assert!(mid <= len, "mid out of bounds");
-        unsafe { self.cut_unchecked(mid, len - mid) }
-    }
-}
-impl<'a, 'b, P, BPV: BitsPerValue> MidCut<usize> for &'b mut PackSpan<&'a mut [P], BPV> {
-    type Output = PackSpan<&'b mut [P], BPV>;
-
-    #[inline]
-    fn cut_at_checked(self, mid: usize) -> Option<Self::Output> {
-        let len = self.len();
-        if mid > len {
-            return None;
-        }
-        Some(unsafe { self.cut_unchecked(mid, len - mid) })
-    }
-
-    #[inline]
-    unsafe fn cut_at_unchecked(self, mid: usize) -> Self::Output {
-        let len = self.len();
-        debug_assert!(mid <= len, "mid out of bounds");
-        unsafe { self.cut_unchecked(mid, len - mid) }
-    }
-}
-impl<'a, P, BPV: BitsPerValue> MidCut<usize> for PackSpan<&'a mut [P], BPV> {
-    type Output = Self;
-
-    #[inline]
-    fn cut_at_checked(self, mid: usize) -> Option<Self::Output> {
-        let len = self.len();
-        if mid > len {
-            return None;
-        }
-        Some(unsafe { self.cut_unchecked(mid, len - mid) })
-    }
-
-    #[inline]
-    unsafe fn cut_at_unchecked(self, mid: usize) -> Self::Output {
-        let len = self.len();
-        debug_assert!(mid <= len, "mid out of bounds");
-        unsafe { self.cut_unchecked(mid, len - mid) }
-    }
-}
-
-impl<'a, 'b, P, BPV: BitsPerValue> RangeCut<usize> for &'b PackSpan<&'a [P], BPV> {
-    type Output = PackSpan<&'a [P], BPV>;
-
-    #[inline]
-    fn cut_checked(self, start: usize, len: usize) -> Option<Self::Output> {
-        if self.is_valid_cut_range(start, len) {
-            Some(unsafe { self.cut_unchecked(start, len) })
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    unsafe fn cut_unchecked(self, start: usize, len: usize) -> Self::Output {
-        let (head_len, tail_len, part_range) = self.get_cut_range(start, len);
-        unsafe {
-            let parts = self.parts.get_unchecked(part_range);
-            Self::Output::from_parts_unchecked(parts, head_len, tail_len, self.bpv)
-        }
-    }
-}
-impl<'a, 'b, P, BPV: BitsPerValue> RangeCut<usize> for &'b mut PackSpan<&'a mut [P], BPV> {
-    type Output = PackSpan<&'b mut [P], BPV>;
-
-    #[inline]
-    fn cut_checked(self, start: usize, len: usize) -> Option<Self::Output> {
-        if self.is_valid_cut_range(start, len) {
-            Some(unsafe { self.cut_unchecked(start, len) })
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    unsafe fn cut_unchecked(self, start: usize, len: usize) -> Self::Output {
-        let (head_len, tail_len, part_range) = self.get_cut_range(start, len);
-        unsafe {
-            let parts = self.parts.get_unchecked_mut(part_range);
-            Self::Output::from_parts_unchecked(parts, head_len, tail_len, self.bpv)
-        }
-    }
-}
-impl<'a, P, BPV: BitsPerValue> RangeCut<usize> for PackSpan<&'a mut [P], BPV> {
-    type Output = Self;
-
-    #[inline]
-    fn cut_checked(self, start: usize, len: usize) -> Option<Self::Output> {
-        if self.is_valid_cut_range(start, len) {
-            Some(unsafe { self.cut_unchecked(start, len) })
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    unsafe fn cut_unchecked(self, start: usize, len: usize) -> Self::Output {
-        let (head_len, tail_len, part_range) = self.get_cut_range(start, len);
-        unsafe {
-            let parts = self.parts.get_unchecked_mut(part_range);
-            Self::Output::from_parts_unchecked(parts, head_len, tail_len, self.bpv)
         }
     }
 }
@@ -436,17 +387,17 @@ where
 }
 
 #[inline(always)]
-pub fn value_mask<E: PrimInt>(bits_per_value: PartSize) -> Option<E> {
-    if let Some(shift) = (size_of::<E>() as u32 * 8).checked_sub(bits_per_value.get() as u32) {
-        Some(E::zero().not().unsigned_shr(shift))
+pub fn value_mask<T: PrimInt>(bits_per_value: PartSize) -> Option<T> {
+    if let Some(shift) = (size_of::<T>() as u32 * 8).checked_sub(bits_per_value.get() as u32) {
+        Some(T::zero().not().unsigned_shr(shift))
     } else {
         None
     }
 }
 
 #[inline(always)]
-pub const fn values_per_part<P>(bits_per_value: PartSize) -> Option<PartSize> {
-    let size = (size_of::<P>() * 8) as u32 / bits_per_value.get() as u32;
+pub const fn values_per_part<T>(bits_per_value: PartSize) -> Option<PartSize> {
+    let size = (size_of::<T>() * 8) as u32 / bits_per_value.get() as u32;
     if size != 0 && size <= (u8::MAX as u32) {
         PartSize::new(size as u8)
     } else {
@@ -456,23 +407,41 @@ pub const fn values_per_part<P>(bits_per_value: PartSize) -> Option<PartSize> {
 
 #[inline(always)]
 pub const fn part_count_ceil(value_len: usize, values_per_part: PartSize) -> usize {
-    let vpp = values_per_part.get();
-    value_len.div_ceil(vpp as usize)
+    value_len.div_ceil(values_per_part.get() as usize)
 }
 
 #[inline(always)]
 pub const fn value_count(
-    part_count: usize,
+    parts_len: usize,
     head_len: PartOffset,
     tail_len: PartOffset,
     values_per_part: PartSize,
 ) -> Option<usize> {
-    let vpp = values_per_part.get();
-    if let Some(body_len) = part_count.checked_mul(vpp as usize) {
+    if let Some(body_len) = parts_len.checked_mul(values_per_part.get() as usize) {
         body_len.checked_sub(head_len as usize + tail_len as usize)
     } else {
         None
     }
+}
+
+#[inline]
+const fn make_cut_range(
+    start: usize,
+    end: usize,
+    head_len: PartOffset,
+    values_per_part: PartSize,
+) -> (PartOffset, PartOffset, Range<usize>) {
+    let start = start.wrapping_add(head_len as usize);
+    let end = end.wrapping_add(head_len as usize);
+    let vpp = values_per_part.get() as usize;
+
+    let part_start = start / vpp;
+    let head_len = (start % vpp) as PartOffset;
+
+    let part_end = end.div_ceil(vpp);
+    let tail_len = part_end.wrapping_mul(vpp).wrapping_sub(end) as PartOffset;
+
+    (head_len, tail_len, part_start..part_end)
 }
 
 #[inline(always)]
@@ -497,6 +466,9 @@ where
     E: PrimInt,
     P: PrimInt,
 {
+    unsafe {
+        assert_unchecked(bit_index < (size_of::<P>() * 8) as u32);
+    }
     E::from(part.unsigned_shr(bit_index) & P::from(value_mask).unwrap()).unwrap()
 }
 
@@ -513,26 +485,26 @@ where
 
 #[cfg(test)]
 mod tests {
-
-    use crate::{PackStorage, PackStorageMut, PackVec, pack_vec::ConstVec};
+    use crate::{PackVec, pack_vec::ConstVec};
 
     use super::*;
 
     #[test]
     pub fn span_cut() {
-        let cvec = ConstVec::<u64, 8>::default();
+        let mut cvec = ConstVec::<u64, 8>::default();
+        cvec.extend_with(16, 3);
 
         let mut vec = PackVec::<u64>::new_var(NonZeroU8::try_from(1).unwrap());
         vec.extend_with(64, 0);
-        let len_truth = vec.len();
 
+        let vec_len = vec.len();
         let span = vec.as_span_mut();
-        let len0 = span.len();
+        assert_eq!(vec_len, span.len());
 
-        let cut1 = span.cut(4, 60);
+        let cut1 = span.cut(4..64);
         assert_eq!(cut1.len(), 60);
 
-        let mut cut2 = cut1.cut(4, 56);
+        let mut cut2 = cut1.cut(4..60);
         assert_eq!(cut2.len(), 56);
 
         for i in 0..5 {

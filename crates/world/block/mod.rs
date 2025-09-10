@@ -1,6 +1,5 @@
 use bytemuck::NoUninit;
 
-
 #[derive(Clone, Copy, Debug, Default, Hash, Eq, PartialEq, NoUninit)]
 #[repr(transparent)]
 pub struct BlockId(pub u32);

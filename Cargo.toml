@@ -18,10 +18,11 @@ opt-level = 2
 
 [workspace.dependencies.bevy]
 version = "0.15"
+default-features = false
 features = ["file_watcher", "dynamic_linking"]
 
 [workspace.dependencies]
-bytemuck = "1.16"
+bytemuck = { version = "1.16", features = ["derive"] }
 rand = "0.8.5"
 rand_xoshiro = "0.6"
 smooth-bevy-cameras = "0.13"

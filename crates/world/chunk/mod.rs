@@ -3,11 +3,11 @@ pub mod palette;
 use std::num::NonZeroUsize;
 
 use bevy::prelude::Component;
-use collections::RangeCut;
+use collections::OwnedCut;
 use num_traits::PrimInt;
 use palette::ChunkPalette;
 
-use crate::block::{BlockId, BlockCoord, BlockSize};
+use crate::block::{BlockCoord, BlockId, BlockSize};
 
 #[derive(Component, Debug, Default)]
 pub struct ChunkLocation {
@@ -160,21 +160,17 @@ pub const fn get_index_base(depth: usize, width: usize, y: usize, z: usize) -> u
     return (y * depth + z) * width;
 }
 
-pub fn fill<T>(
-    offset: BlockCoord,
-    size: BlockSize,
-    value: T,
-    dst_bounds: BlockSize,
-    dst: &mut [T],
-) where
+pub fn fill<T>(offset: BlockCoord, size: BlockSize, value: T, dst_bounds: BlockSize, dst: &mut [T])
+where
     T: Copy,
 {
     for y in 0..size.height {
         let dst_y = offset.y + y;
 
         for z in 0..size.depth {
-            let dst_idx = get_index_base(dst_bounds.depth, dst_bounds.width, dst_y, offset.z + z);
-            let dst_slice = dst.cut(dst_idx + offset.x, size.width);
+            let dst_idx =
+                get_index_base(dst_bounds.depth, dst_bounds.width, dst_y, offset.z + z) + offset.x;
+            let dst_slice = dst.cut(dst_idx..(dst_idx + size.width));
 
             dst_slice.fill(value);
         }
@@ -199,12 +195,14 @@ pub fn cast_copy<S, D>(
 
         for z in 0..copy_size.depth {
             let src_z = src_offset.z + z;
-            let src_idx = get_index_base(src_bounds.depth, src_bounds.width, src_y, src_z);
-            let src_slice = src.cut(src_idx + src_offset.x, copy_size.width);
+            let src_idx =
+                get_index_base(src_bounds.depth, src_bounds.width, src_y, src_z) + src_offset.x;
+            let src_slice = src.cut(src_idx..(src_idx + copy_size.width));
 
             let dst_z = dst_offset.z + z;
-            let dst_idx = get_index_base(dst_bounds.depth, dst_bounds.width, dst_y, dst_z);
-            let dst_slice = dst.cut(dst_idx + dst_offset.x, copy_size.width);
+            let dst_idx =
+                get_index_base(dst_bounds.depth, dst_bounds.width, dst_y, dst_z) + dst_offset.x;
+            let dst_slice = dst.cut(dst_idx..(dst_idx + copy_size.width));
 
             cast(src_slice, dst_slice);
         }
@@ -224,7 +222,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    /* 
+    /*
     let size = black_box(64);
     let src = vec![256; size];
     let mut dst8 = vec![0 as u8; size];
