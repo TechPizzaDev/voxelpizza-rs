@@ -6,8 +6,11 @@ use std::{
 
 use collections::{
     IndexMap, OwnedCut, PackVec,
-    pack_span::{PackAccess, PackAccessMut, PackSpan, PartSize},
-    pack_vec::{PackOrder, ConstPackOrder, ConstVec, VarPackOrder},
+    pack_span::{
+        PackAccess, PackAccessMut, PackSpanMut,
+        part::{Part, PartSize},
+    },
+    pack_vec::{ConstPackOrder, ConstVec, PackOrder, VarPackOrder},
 };
 use iters::search::SliceSearch;
 use num_traits::PrimInt;
@@ -16,26 +19,25 @@ use crate::block::{BlockCoord, BlockId, BlockSize};
 
 use super::{BlockStorage, Chunk, get_index_base};
 
-type Part = u64;
 type PalIdx = u32;
 
 #[derive(Debug)]
 pub struct ChunkPalette {
     indices: IndexMap<BlockId, PalIdx>,
-    data: PackVec<Part>,
+    data: PackVec,
 }
 
 const fn get_storage_bits_for_palette(count: usize) -> PartSize {
     let size = if count <= 1 {
         1
     } else {
-        let max_bits = (size_of::<BlockId>() * 8) as u32;
-        assert!(max_bits <= PartSize::MAX.get() as u32);
+        let max_bits = size_of::<BlockId>() * 8;
+        assert!(max_bits <= PartSize::MAX.get());
 
-        let free_bits = (count - 1).leading_zeros();
+        let free_bits = (count - 1).leading_zeros() as usize;
         max_bits
             .checked_sub(free_bits)
-            .expect("count exceeds representable range") as u8
+            .expect("count exceeds representable range")
     };
     PartSize::new(size).unwrap()
 }
@@ -93,7 +95,7 @@ impl ChunkPalette {
     fn get_contiguous_blocks<E, const BPV: u8, const N: usize>(
         &self,
         mut dst: &mut [BlockId],
-        index_buffer: PackSpan<&mut [E], ConstPackOrder<E, BPV>>,
+        index_buffer: PackSpanMut<ConstPackOrder<E, BPV>>,
     ) where
         E: 'static + SimdElement + PrimInt,
         LaneCount<N>: SupportedLaneCount,
@@ -122,7 +124,7 @@ impl ChunkPalette {
 
             // Fill block values in bulk.
             let value = palette[index.to_usize().unwrap()];
-            dst[0..len].fill(value);
+            dst[..len].fill(value);
 
             src = src.cut(len..);
             dst = &mut dst[len..];
@@ -184,7 +186,7 @@ impl ChunkPalette {
     fn set_contiguous_blocks<T: PrimInt, const BPV: u8>(
         &mut self,
         mut src: &[BlockId],
-        mut index_buffer: PackSpan<&mut [T], ConstPackOrder<T, BPV>>,
+        mut index_buffer: PackSpanMut<ConstPackOrder<T, BPV>>,
     ) {
         assert_eq!(index_buffer.len(), src.len());
 
@@ -276,11 +278,11 @@ impl BlockStorage for ChunkPalette {
         dst_bounds: BlockSize,
         dst: &mut [BlockId],
     ) {
-        match self.data.order().bits_per_value().get() {
+        match self.data.order().value_bits().get() {
             ..=08 => self.get_blocks_core::<u8, 8, 16>(offset, size, dst_offset, dst_bounds, dst),
             ..=16 => self.get_blocks_core::<u16, 16, 8>(offset, size, dst_offset, dst_bounds, dst),
             ..=32 => self.get_blocks_core::<u32, 32, 4>(offset, size, dst_offset, dst_bounds, dst),
-            bpv => panic_unsupported_bpv(bpv),
+            value_bits => panic_unsupported_value_bits(value_bits),
         }
     }
 
@@ -318,17 +320,17 @@ impl BlockStorage for ChunkPalette {
             ..=08 => self.set_blocks_core::<u8, 8>(offset, size, src_offset, src_bounds, src),
             ..=16 => self.set_blocks_core::<u16, 16>(offset, size, src_offset, src_bounds, src),
             ..=32 => self.set_blocks_core::<u32, 32>(offset, size, src_offset, src_bounds, src),
-            bpv => panic_unsupported_bpv(bpv),
+            bpv => panic_unsupported_value_bits(bpv),
         }
     }
 
     fn fill(&mut self, offset: BlockCoord, size: BlockSize, value: BlockId) {
         let palette_idx = *self.get_or_add_index(value).0;
-        match self.data.order().bits_per_value().get() {
+        match self.data.order().value_bits().get() {
             ..=08 => self.fill_block_core::<u8>(offset, size, palette_idx as u8),
             ..=16 => self.fill_block_core::<u16>(offset, size, palette_idx as u16),
             ..=32 => self.fill_block_core::<u32>(offset, size, palette_idx as u32),
-            bpv => panic_unsupported_bpv(bpv),
+            value_bits => panic_unsupported_value_bits(value_bits),
         }
     }
 }
@@ -340,7 +342,7 @@ impl ChunkPalette {
         match self.indices.map.entry(value) {
             Entry::Occupied(occupied) => (occupied.into_mut(), false),
             Entry::Vacant(vacant) => {
-                if self.data.order().bits_per_value() != bits_needed {
+                if self.data.order().value_bits() != bits_needed {
                     std::hint::cold_path();
                     self.data = resize_storage(&self.data, bits_needed);
                 }
@@ -350,23 +352,19 @@ impl ChunkPalette {
     }
 }
 
-fn resize_storage<T: PrimInt>(data: &PackVec<T>, bits_per_value: PartSize) -> PackVec<T> {
-    let bpv = VarPackOrder::new::<T>(bits_per_value);
-    let mut new_storage = PackVec::<T>::with_capacity(data.len(), bpv);
+// TODO: resize in-place
+fn resize_storage(data: &PackVec, value_bits: PartSize) -> PackVec {
+    let bpv = VarPackOrder::new::<Part>(value_bits);
+    let mut new_storage = PackVec::with_capacity(data.len(), bpv);
 
     let src_span = data.as_span();
-    let dst_span = &mut new_storage.as_span_mut();
-    match bpv.bits_per_value().get() {
-        ..=08 => src_span.cast_copy_to::<u8, _>(dst_span),
-        ..=16 => src_span.cast_copy_to::<u16, _>(dst_span),
-        ..=32 => src_span.cast_copy_to::<u32, _>(dst_span),
-        bpv => panic_unsupported_bpv(bpv),
-    };
+    let mut dst_span = new_storage.as_span_mut();
+    src_span.copy_to(&mut dst_span);
     new_storage
 }
 
 #[inline(never)]
 #[cold]
-fn panic_unsupported_bpv(bits_per_value: u8) -> ! {
-    panic!("unsupported value {} for bits_per_value.", bits_per_value)
+fn panic_unsupported_value_bits(value_bits: usize) -> ! {
+    panic!("unsupported value bit-size {}.", value_bits)
 }

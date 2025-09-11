@@ -36,7 +36,7 @@ pub struct CuboidMaterial {
     /// [`VertexPullingRenderPlugin::edges`](crate::VertexPullingRenderPlugin)
     /// must be `true` for this to take effect.
     pub wireframe: u32,
-    
+
     pub _pad0: u32,
     pub _pad1: u32,
 
@@ -56,7 +56,7 @@ impl Default for CuboidMaterial {
             scalar_hue: default(),
             emissive_gain: Vec3::splat(30.0),
             _pad0: 0,
-            _pad1: 1
+            _pad1: 1,
         }
     }
 }

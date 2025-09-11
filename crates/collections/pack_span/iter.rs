@@ -1,57 +1,43 @@
-use std::{marker::PhantomData, ops::Deref};
+use crate::pack_span::{PackAccess, PackSpan, PackSpanMut, Part};
 
-use num_traits::PrimInt;
+use super::PackOrder;
 
-use super::{PackOrder, get, value_mask};
-
-pub struct PackIter<S, E, O: PackOrder> {
-    parts: S,
-    index: usize,
-    end: usize,
-    order: O,
-    _marker: PhantomData<E>,
-}
-
-impl<S, E: PrimInt, O: PackOrder> PackIter<S, E, O> {
-    pub fn from_slice(parts: S, start: usize, len: usize, order: O) -> Self {
-        let end = start.checked_add(len).unwrap();
-        Self {
-            parts,
-            index: start,
-            end,
-            order,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<S, P: PrimInt, E: PrimInt, O: PackOrder> Iterator for PackIter<S, E, O>
-where
-    S: Deref<Target = [P]>,
-{
-    type Item = E;
+impl<'a, O: PackOrder> Iterator for PackSpan<'a, O> {
+    type Item = Part;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let index = self.index;
-        if index >= self.end {
-            return None;
+        if let Some(value) = self.get(0) {
+            self.inner.consume(1, self.order.values_per_part());
+            return Some(value);
         }
-        let key = self.order.part_key(index);
-        self.index = index + 1;
-
-        let mask = value_mask(self.order.bits_per_value()).unwrap();
-        let part = unsafe { *self.parts.get_unchecked(key.part_index) };
-        Some(get(part, key.bit_index, mask))
+        None
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let size = self.end.wrapping_sub(self.index);
-        (size, Some(size))
+        let size = usize::try_from(self.len()).ok();
+        (size.unwrap_or(usize::MAX), size)
     }
 }
+impl<'a, O: PackOrder> ExactSizeIterator for PackSpan<'a, O> {}
 
-impl<S, P: PrimInt, E: PrimInt, O: PackOrder> ExactSizeIterator for PackIter<S, E, O> where
-    S: Deref<Target = [P]>
-{
+impl<'a, O: PackOrder> Iterator for PackSpanMut<'a, O> {
+    type Item = Part;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(value) = self.get(0) {
+            self.inner.consume(1, self.order.values_per_part());
+            return Some(value);
+        }
+        None
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = usize::try_from(self.len()).ok();
+        (size.unwrap_or(usize::MAX), size)
+    }
 }
+impl<'a, O: PackOrder> ExactSizeIterator for PackSpanMut<'a, O> {}

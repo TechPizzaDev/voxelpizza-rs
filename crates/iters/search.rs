@@ -1,4 +1,4 @@
-use std::simd::{cmp::SimdPartialEq, LaneCount, Mask, Simd, SimdElement, SupportedLaneCount};
+use std::simd::{LaneCount, Mask, Simd, SimdElement, SupportedLaneCount, cmp::SimdPartialEq};
 
 pub trait SliceSearch<T> {
     type Index;
@@ -12,7 +12,7 @@ pub trait SliceSearch<T> {
 
 impl<T> SliceSearch<T> for [T] {
     type Index = usize;
-    
+
     #[inline]
     fn index_of_any_except<const N: usize>(&self, value: T) -> Option<Self::Index>
     where
