@@ -7,7 +7,7 @@ use std::{
 use collections::{
     IndexMap, OwnedCut, PackVec,
     pack_span::{PackAccess, PackAccessMut, PackSpan, PartSize},
-    pack_vec::{BitsPerValue, ConstBPV, ConstVec, VarBPV},
+    pack_vec::{PackOrder, ConstPackOrder, ConstVec, VarPackOrder},
 };
 use iters::search::SliceSearch;
 use num_traits::PrimInt;
@@ -93,7 +93,7 @@ impl ChunkPalette {
     fn get_contiguous_blocks<E, const BPV: u8, const N: usize>(
         &self,
         mut dst: &mut [BlockId],
-        index_buffer: PackSpan<&mut [E], ConstBPV<E, BPV>>,
+        index_buffer: PackSpan<&mut [E], ConstPackOrder<E, BPV>>,
     ) where
         E: 'static + SimdElement + PrimInt,
         LaneCount<N>: SupportedLaneCount,
@@ -184,7 +184,7 @@ impl ChunkPalette {
     fn set_contiguous_blocks<T: PrimInt, const BPV: u8>(
         &mut self,
         mut src: &[BlockId],
-        mut index_buffer: PackSpan<&mut [T], ConstBPV<T, BPV>>,
+        mut index_buffer: PackSpan<&mut [T], ConstPackOrder<T, BPV>>,
     ) {
         assert_eq!(index_buffer.len(), src.len());
 
@@ -276,7 +276,7 @@ impl BlockStorage for ChunkPalette {
         dst_bounds: BlockSize,
         dst: &mut [BlockId],
     ) {
-        match self.data.bpv().bits_per_value().get() {
+        match self.data.order().bits_per_value().get() {
             ..=08 => self.get_blocks_core::<u8, 8, 16>(offset, size, dst_offset, dst_bounds, dst),
             ..=16 => self.get_blocks_core::<u16, 16, 8>(offset, size, dst_offset, dst_bounds, dst),
             ..=32 => self.get_blocks_core::<u32, 32, 4>(offset, size, dst_offset, dst_bounds, dst),
@@ -324,7 +324,7 @@ impl BlockStorage for ChunkPalette {
 
     fn fill(&mut self, offset: BlockCoord, size: BlockSize, value: BlockId) {
         let palette_idx = *self.get_or_add_index(value).0;
-        match self.data.bpv().bits_per_value().get() {
+        match self.data.order().bits_per_value().get() {
             ..=08 => self.fill_block_core::<u8>(offset, size, palette_idx as u8),
             ..=16 => self.fill_block_core::<u16>(offset, size, palette_idx as u16),
             ..=32 => self.fill_block_core::<u32>(offset, size, palette_idx as u32),
@@ -340,7 +340,7 @@ impl ChunkPalette {
         match self.indices.map.entry(value) {
             Entry::Occupied(occupied) => (occupied.into_mut(), false),
             Entry::Vacant(vacant) => {
-                if self.data.bpv().bits_per_value() != bits_needed {
+                if self.data.order().bits_per_value() != bits_needed {
                     std::hint::cold_path();
                     self.data = resize_storage(&self.data, bits_needed);
                 }
@@ -351,7 +351,7 @@ impl ChunkPalette {
 }
 
 fn resize_storage<T: PrimInt>(data: &PackVec<T>, bits_per_value: PartSize) -> PackVec<T> {
-    let bpv = VarBPV::new::<T>(bits_per_value);
+    let bpv = VarPackOrder::new::<T>(bits_per_value);
     let mut new_storage = PackVec::<T>::with_capacity(data.len(), bpv);
 
     let src_span = data.as_span();

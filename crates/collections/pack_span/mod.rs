@@ -19,7 +19,7 @@ use num_traits::PrimInt;
 
 use crate::{
     OwnedCut, SplitCut,
-    pack_vec::{BitsPerValue, VarBPV},
+    pack_vec::{PackOrder, VarPackOrder},
 };
 
 pub type PartOffset = u8;
@@ -32,7 +32,7 @@ pub struct PartKey {
     pub bit_index: u32,
 }
 
-pub struct PackSpan<S, BPV: BitsPerValue = VarBPV> {
+pub struct PackSpan<S, O: PackOrder = VarPackOrder> {
     parts: S,
 
     /// Inclusive offset into the first part.
@@ -41,19 +41,19 @@ pub struct PackSpan<S, BPV: BitsPerValue = VarBPV> {
     /// Exclusive offset into the last part.
     tail_len: PartOffset,
 
-    bpv: BPV,
+    order: O,
 }
 
 pub trait PackAccess<P> {
-    type BPV: BitsPerValue;
+    type Order: PackOrder;
 
-    fn bpv(&self) -> Self::BPV;
+    fn order(&self) -> Self::Order;
 
     fn len(&self) -> usize;
 
     #[inline]
     fn part_len(&self) -> usize {
-        part_count_ceil(self.len(), self.bpv().values_per_part())
+        part_count_ceil(self.len(), self.order().values_per_part())
     }
 
     fn get<E>(&self, index: usize) -> Option<E>
@@ -126,28 +126,28 @@ impl PartKey {
     }
 }
 
-impl<S, P, BPV: BitsPerValue> PackSpan<S, BPV>
+impl<P, S, O: PackOrder> PackSpan<S, O>
 where
     S: Deref<Target = [P]>,
 {
     #[inline]
-    pub fn from_parts(
+    pub fn from_parts<'a>(
         parts: S,
         head_len: PartOffset,
         tail_len: PartOffset,
-        bpv: BPV,
+        order: O,
     ) -> Result<Self, ()> {
-        if bpv.bits_per_part() > size_of::<P>() * 8 {
+        if order.bits_per_part() > size_of::<P>() * 8 {
             return Err(());
         }
-        if value_count(parts.len(), head_len, tail_len, bpv.values_per_part()).is_none() {
+        if value_count(parts.len(), head_len, tail_len, order.values_per_part()).is_none() {
             return Err(());
         }
         Ok(Self {
             parts,
             head_len,
             tail_len,
-            bpv,
+            order,
         })
     }
 
@@ -156,19 +156,20 @@ where
         parts: S,
         head_len: PartOffset,
         tail_len: PartOffset,
-        bpv: BPV,
+        order: O,
     ) -> Self {
         Self {
             parts,
             head_len,
             tail_len,
-            bpv,
+            order,
         }
     }
 
     #[inline]
     fn part_key(&self, index: usize) -> PartKey {
-        self.bpv.part_key(index.strict_add(self.head_len as usize))
+        self.order
+            .part_key(index.strict_add(self.head_len as usize))
     }
 
     #[inline]
@@ -191,17 +192,17 @@ where
             start,
             end,
             self.head_len,
-            self.bpv.values_per_part(),
+            self.order.values_per_part(),
         ))
     }
 
-    pub fn iter<E: PrimInt>(&self) -> PackIter<&[P], E, BPV> {
-        PackIter::from_slice(&self.parts, self.head_len as usize, self.len(), self.bpv)
+    pub fn iter<E: PrimInt>(&self) -> PackIter<&[P], E, O> {
+        PackIter::from_slice(&self.parts, self.head_len as usize, self.len(), self.order)
     }
 
-    pub fn into_iter<E: PrimInt>(self) -> PackIter<S, E, BPV> {
+    pub fn into_iter<E: PrimInt>(self) -> PackIter<S, E, O> {
         let len = self.len();
-        PackIter::from_slice(self.parts, self.head_len as usize, len, self.bpv)
+        PackIter::from_slice(self.parts, self.head_len as usize, len, self.order)
     }
 }
 
@@ -225,45 +226,45 @@ fn end_bound(range: &impl RangeBounds<usize>, len: usize) -> usize {
 
 macro_rules! impl_owned_cut {
     ($index:ty) => {
-        impl<S, P, BPV: BitsPerValue> OwnedCut<$index> for PackSpan<S, BPV>
+        impl<P, S, O: PackOrder> OwnedCut<$index> for PackSpan<S, O>
         where
             S: Deref<Target = [P]> + OwnedCut<Range<usize>, Output = S>,
         {
-            type Output = PackSpan<S, BPV>;
+            type Output = PackSpan<S, O>;
 
             #[inline]
-            fn cut_checked(self, index: $index) -> Option<PackSpan<S, BPV>> {
+            fn cut_checked(self, index: $index) -> Option<PackSpan<S, O>> {
                 if let Ok((head_len, tail_len, part_range)) = self.get_cut_range(&index) {
                     let parts = unsafe { self.parts.cut_unchecked(part_range) };
-                    Self::Output::from_parts(parts, head_len, tail_len, self.bpv).ok()
+                    Self::Output::from_parts(parts, head_len, tail_len, self.order).ok()
                 } else {
                     None
                 }
             }
 
             #[inline]
-            unsafe fn cut_unchecked(self, index: $index) -> PackSpan<S, BPV> {
+            unsafe fn cut_unchecked(self, index: $index) -> PackSpan<S, O> {
                 let (head_len, tail_len, part_range) = make_cut_range(
                     start_bound(&index),
                     end_bound(&index, self.len()),
                     self.head_len,
-                    self.bpv.values_per_part(),
+                    self.order.values_per_part(),
                 );
                 unsafe {
                     let parts = self.parts.cut_unchecked(part_range);
-                    Self::Output::from_parts_unchecked(parts, head_len, tail_len, self.bpv)
+                    Self::Output::from_parts_unchecked(parts, head_len, tail_len, self.order)
                 }
             }
         }
 
-        impl<'a, 'b, P, BPV: BitsPerValue> OwnedCut<$index> for &'b mut PackSpan<&'a mut [P], BPV> {
-            type Output = PackSpan<&'b mut [P], BPV>;
+        impl<'a, 'b, P, O: PackOrder> OwnedCut<$index> for &'b mut PackSpan<&'a mut [P], O> {
+            type Output = PackSpan<&'b mut [P], O>;
 
             #[inline]
             fn cut_checked(self, index: $index) -> Option<Self::Output> {
                 if let Ok((head_len, tail_len, part_range)) = self.get_cut_range(&index) {
                     let parts = unsafe { self.parts.cut_unchecked(part_range) };
-                    Self::Output::from_parts(parts, head_len, tail_len, self.bpv).ok()
+                    Self::Output::from_parts(parts, head_len, tail_len, self.order).ok()
                 } else {
                     None
                 }
@@ -282,12 +283,12 @@ impl_owned_cut!(range::RangeInclusive<usize>);
 impl_owned_cut!(ops::RangeToInclusive<usize>);
 impl_owned_cut!((ops::Bound<usize>, ops::Bound<usize>));
 
-impl<'a, S, P, BPV: BitsPerValue> SplitCut<usize> for &'a PackSpan<S, BPV>
+impl<'a, S, P, O: PackOrder> SplitCut<usize> for &'a PackSpan<S, O>
 where
     S: Deref<Target = [P]>,
-    Self: OwnedCut<Range<usize>, Output = PackSpan<S, BPV>>,
+    Self: OwnedCut<Range<usize>, Output = PackSpan<S, O>>,
 {
-    type Output = PackSpan<S, BPV>;
+    type Output = PackSpan<S, O>;
 
     #[inline]
     fn split_at_checked(self, mid: usize) -> Option<(Self::Output, Self::Output)> {
@@ -305,15 +306,15 @@ where
 
 // Cannot safely implement `SplitCut` for PackSpan over mut without tearing on shared slices.
 
-impl<S, P, BPV: BitsPerValue> PackAccess<P> for PackSpan<S, BPV>
+impl<S, P, O: PackOrder> PackAccess<P> for PackSpan<S, O>
 where
     S: Deref<Target = [P]>,
 {
-    type BPV = BPV;
+    type Order = O;
 
     #[inline]
-    fn bpv(&self) -> Self::BPV {
-        self.bpv
+    fn order(&self) -> Self::Order {
+        self.order
     }
 
     #[inline]
@@ -322,7 +323,7 @@ where
             self.parts.len(),
             self.head_len,
             self.tail_len,
-            self.bpv.values_per_part(),
+            self.order.values_per_part(),
         );
         // SAFETY: assume Self is valid
         unsafe { value_count.unwrap_unchecked() }
@@ -340,13 +341,13 @@ where
         P: PrimInt,
     {
         let key = self.part_key(index);
-        let mask = value_mask(self.bpv.bits_per_value()).unwrap();
+        let mask = value_mask(self.order.bits_per_value()).unwrap();
         let part = self.parts.get(key.part_index)?;
         Some(get(*part, key.bit_index, mask))
     }
 }
 
-impl<S, P, BPV: BitsPerValue> PackAccessMut<P> for PackSpan<S, BPV>
+impl<S, P, O: PackOrder> PackAccessMut<P> for PackSpan<S, O>
 where
     S: DerefMut<Target = [P]>,
 {
@@ -357,7 +358,7 @@ where
         P: PrimInt,
     {
         let key = self.part_key(index);
-        let mask = value_mask(self.bpv.bits_per_value()).unwrap();
+        let mask = value_mask(self.order.bits_per_value()).unwrap();
         let part = self.parts.get_mut(key.part_index)?;
         let old_value = get(*part, key.bit_index, mask);
         *part = set(*part, key.bit_index, value, mask);
@@ -377,7 +378,7 @@ where
     }
 }
 
-impl<S, P: PrimInt + fmt::Debug, BPV: BitsPerValue> fmt::Debug for PackSpan<S, BPV>
+impl<S, P: PrimInt + fmt::Debug, O: PackOrder> fmt::Debug for PackSpan<S, O>
 where
     S: Deref<Target = [P]>,
 {

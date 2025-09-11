@@ -13,16 +13,16 @@ use crate::pack_span::{
 };
 use crate::subslice::OwnedCut;
 
-pub type ConstVec<P, const BPV: u8> = PackVec<P, ConstBPV<P, BPV>>;
+pub type ConstVec<P, const BPV: u8> = PackVec<P, ConstPackOrder<P, BPV>>;
 
 /// Packed array of values. Each value consumes a specific amount of bits.
-pub struct PackVec<P, BPV: BitsPerValue = VarBPV, A: Allocator = Global> {
+pub struct PackVec<P, O: PackOrder = VarPackOrder, A: Allocator = Global> {
     parts: RawVec<P, A>,
     len: usize,
-    bpv: BPV,
+    order: O,
 }
 
-pub trait BitsPerValue: Copy {
+pub trait PackOrder: Copy {
     fn bits_per_value(&self) -> PartSize;
 
     fn values_per_part(&self) -> PartSize;
@@ -40,17 +40,17 @@ pub trait BitsPerValue: Copy {
 
 // TODO: print BitsPerValue::bits_per_part in Debug?
 #[derive(Debug)]
-pub struct VarBPV {
+pub struct VarPackOrder {
     bits_per_value: PartSize,
     values_per_part: PartSize,
 }
 
 #[derive(Debug)]
-pub struct ConstBPV<P: 'static, const BPV: u8> {
+pub struct ConstPackOrder<P: 'static, const BPV: u8> {
     _marker: PhantomData<P>,
 }
 
-impl VarBPV {
+impl VarPackOrder {
     pub const fn new<P>(bits_per_value: PartSize) -> Self {
         Self {
             bits_per_value,
@@ -59,7 +59,7 @@ impl VarBPV {
     }
 }
 
-impl Clone for VarBPV {
+impl Clone for VarPackOrder {
     #[inline]
     fn clone(&self) -> Self {
         Self {
@@ -68,8 +68,8 @@ impl Clone for VarBPV {
         }
     }
 }
-impl Copy for VarBPV {}
-impl BitsPerValue for VarBPV {
+impl Copy for VarPackOrder {}
+impl PackOrder for VarPackOrder {
     #[inline]
     fn bits_per_value(&self) -> PartSize {
         self.bits_per_value
@@ -81,7 +81,7 @@ impl BitsPerValue for VarBPV {
     }
 }
 
-impl<P, const BPV: u8> ConstBPV<P, BPV> {
+impl<P, const BPV: u8> ConstPackOrder<P, BPV> {
     #[inline]
     pub const fn new() -> Self {
         Self {
@@ -89,7 +89,7 @@ impl<P, const BPV: u8> ConstBPV<P, BPV> {
         }
     }
 }
-impl<P, const BPV: u8> Clone for ConstBPV<P, BPV> {
+impl<P, const BPV: u8> Clone for ConstPackOrder<P, BPV> {
     #[inline]
     fn clone(&self) -> Self {
         Self {
@@ -97,8 +97,8 @@ impl<P, const BPV: u8> Clone for ConstBPV<P, BPV> {
         }
     }
 }
-impl<P, const BPV: u8> Copy for ConstBPV<P, BPV> {}
-impl<P, const BPV: u8> Default for ConstBPV<P, BPV> {
+impl<P, const BPV: u8> Copy for ConstPackOrder<P, BPV> {}
+impl<P, const BPV: u8> Default for ConstPackOrder<P, BPV> {
     #[inline]
     fn default() -> Self {
         Self {
@@ -106,7 +106,7 @@ impl<P, const BPV: u8> Default for ConstBPV<P, BPV> {
         }
     }
 }
-impl<P, const BPV: u8> BitsPerValue for ConstBPV<P, BPV> {
+impl<P, const BPV: u8> PackOrder for ConstPackOrder<P, BPV> {
     #[inline]
     fn bits_per_value(&self) -> PartSize {
         PartSize::new(BPV).unwrap()
@@ -127,41 +127,41 @@ impl<P, const BPV: u8> BitsPerValue for ConstBPV<P, BPV> {
 
 // TODO: resize in-place, changing BPV (maybe even generically, not specifically PackVec)
 
-impl<P> PackVec<P, VarBPV> {
+impl<P> PackVec<P, VarPackOrder> {
     #[inline]
     pub const fn new_var(bits_per_value: PartSize) -> Self {
-        Self::new(VarBPV::new::<P>(bits_per_value))
+        Self::new(VarPackOrder::new::<P>(bits_per_value))
     }
 }
-impl<P, BPV: BitsPerValue> PackVec<P, BPV, Global> {
+impl<P, O: PackOrder> PackVec<P, O, Global> {
     #[inline]
-    pub const fn new(bpv: BPV) -> Self {
-        Self::new_in(bpv, Global)
+    pub const fn new(order: O) -> Self {
+        Self::new_in(order, Global)
     }
 
     #[inline]
-    pub fn with_capacity(capacity: usize, bpv: BPV) -> Self {
-        Self::with_capacity_in(capacity, bpv, Global)
+    pub fn with_capacity(capacity: usize, order: O) -> Self {
+        Self::with_capacity_in(capacity, order, Global)
     }
 }
 
-impl<P, BPV: BitsPerValue, A: Allocator> PackVec<P, BPV, A> {
+impl<P, O: PackOrder, A: Allocator> PackVec<P, O, A> {
     #[inline]
-    pub const fn new_in(bpv: BPV, alloc: A) -> Self {
+    pub const fn new_in(order: O, alloc: A) -> Self {
         Self {
             parts: RawVec::new_in(alloc),
             len: 0,
-            bpv,
+            order,
         }
     }
 
     #[inline]
-    pub fn with_capacity_in(capacity: usize, bpv: BPV, alloc: A) -> Self {
-        let capacity = part_count_ceil(capacity, bpv.values_per_part());
+    pub fn with_capacity_in(capacity: usize, order: O, alloc: A) -> Self {
+        let capacity = part_count_ceil(capacity, order.values_per_part());
         Self {
             parts: RawVec::with_capacity_in(capacity, alloc),
             len: 0,
-            bpv,
+            order,
         }
     }
 
@@ -188,11 +188,11 @@ impl<P, BPV: BitsPerValue, A: Allocator> PackVec<P, BPV, A> {
     }
 
     #[inline]
-    pub fn as_span(&self) -> PackSpan<&[P], BPV> {
-        let bpv = self.bpv();
-        let (part_end, tail_len) = Self::make_end_tail(bpv.values_per_part(), self.len());
+    pub fn as_span(&self) -> PackSpan<&[P], O> {
+        let order = self.order();
+        let (part_end, tail_len) = Self::make_end_tail(order.values_per_part(), self.len());
         let parts = &self.as_slice()[..part_end];
-        unsafe { PackSpan::from_parts_unchecked(parts, 0, tail_len, bpv) }
+        unsafe { PackSpan::from_parts_unchecked(parts, 0, tail_len, order) }
     }
 
     #[inline]
@@ -201,16 +201,16 @@ impl<P, BPV: BitsPerValue, A: Allocator> PackVec<P, BPV, A> {
     }
 
     #[inline]
-    pub fn as_span_mut(&mut self) -> PackSpan<&mut [P], BPV> {
-        let bpv = self.bpv();
-        let (part_end, tail_len) = Self::make_end_tail(bpv.values_per_part(), self.len());
+    pub fn as_span_mut(&mut self) -> PackSpan<&mut [P], O> {
+        let order = self.order();
+        let (part_end, tail_len) = Self::make_end_tail(order.values_per_part(), self.len());
         let parts = &mut self.as_slice_mut()[..part_end];
-        unsafe { PackSpan::from_parts_unchecked(parts, 0, tail_len, bpv) }
+        unsafe { PackSpan::from_parts_unchecked(parts, 0, tail_len, order) }
     }
 
     #[inline]
     pub fn capacity(&self) -> usize {
-        self.parts.capacity() * self.bpv.values_per_part().get() as usize
+        self.parts.capacity() * self.order.values_per_part().get() as usize
     }
 
     #[inline]
@@ -223,7 +223,7 @@ impl<P, BPV: BitsPerValue, A: Allocator> PackVec<P, BPV, A> {
     pub fn reserve(&mut self, additional: usize) {
         self.parts.reserve(
             self.part_len(),
-            part_count_ceil(additional, self.bpv.values_per_part()),
+            part_count_ceil(additional, self.order.values_per_part()),
         );
     }
 
@@ -234,12 +234,12 @@ impl<P, BPV: BitsPerValue, A: Allocator> PackVec<P, BPV, A> {
         E: PrimInt,
     {
         let len = self.len;
-        let key = self.bpv.part_key(len);
+        let key = self.order.part_key(len);
         if key.part_index == self.parts.capacity() {
             self.parts.grow_one();
         }
 
-        let mask = value_mask(self.bpv.bits_per_value()).unwrap();
+        let mask = value_mask(self.order.bits_per_value()).unwrap();
         unsafe {
             let part = self.as_mut_ptr().add(key.part_index);
             *part = pack_span::set(*part, key.bit_index, value, mask);
@@ -264,35 +264,40 @@ impl<P, BPV: BitsPerValue, A: Allocator> PackVec<P, BPV, A> {
         }
     }
 
-    pub fn iter<E: PrimInt>(&self) -> PackIter<&[P], E, BPV> {
+    pub fn iter<E: PrimInt>(&self) -> PackIter<&[P], E, O> {
         self.as_span().into_iter()
     }
 
     #[inline]
-    unsafe fn as_full_span_mut(&mut self) -> PackSpan<&mut [P], BPV> {
-        let bpv = self.bpv;
-        let tail_len = bpv.values_per_part().get();
-        unsafe { PackSpan::from_parts_unchecked(self.as_slice_mut(), 0, tail_len, bpv) }
+    unsafe fn as_full_span_mut(&mut self) -> PackSpan<&mut [P], O> {
+        let order = self.order;
+        let tail_len = order.values_per_part().get();
+        unsafe { PackSpan::from_parts_unchecked(self.as_slice_mut(), 0, tail_len, order) }
     }
 }
-impl<P, BPV: BitsPerValue + Default, A: Allocator + Default> Default for PackVec<P, BPV, A> {
+impl<P, O: PackOrder + Default, A: Allocator + Default> Default for PackVec<P, O, A> {
     #[inline]
     fn default() -> Self {
-        Self::new_in(BPV::default(), A::default())
+        Self::new_in(O::default(), A::default())
     }
 }
 
-impl<P, BPV: BitsPerValue, A: Allocator> PackAccess<P> for PackVec<P, BPV, A> {
-    type BPV = BPV;
+impl<P, O: PackOrder, A: Allocator> PackAccess<P> for PackVec<P, O, A> {
+    type Order = O;
 
     #[inline]
-    fn bpv(&self) -> Self::BPV {
-        self.bpv
+    fn order(&self) -> Self::Order {
+        self.order
     }
 
     #[inline]
     fn len(&self) -> usize {
         self.len
+    }
+
+    #[inline]
+    fn part_len(&self) -> usize {
+        part_count_ceil(self.len, self.order.values_per_part())
     }
 
     #[inline]
@@ -304,13 +309,13 @@ impl<P, BPV: BitsPerValue, A: Allocator> PackAccess<P> for PackVec<P, BPV, A> {
         if index >= self.len {
             return None;
         }
-        let key = self.bpv.part_key(index);
-        let mask = value_mask(self.bpv.bits_per_value()).unwrap();
+        let key = self.order.part_key(index);
+        let mask = value_mask(self.order.bits_per_value()).unwrap();
         let part: P = unsafe { *self.as_ptr().add(key.part_index) };
         Some(pack_span::get(part, key.bit_index, mask))
     }
 }
-impl<P, BPV: BitsPerValue, A: Allocator> PackAccessMut<P> for PackVec<P, BPV, A> {
+impl<P, O: PackOrder, A: Allocator> PackAccessMut<P> for PackVec<P, O, A> {
     #[inline]
     fn set<E>(&mut self, index: usize, value: E) -> Option<E>
     where
@@ -320,8 +325,8 @@ impl<P, BPV: BitsPerValue, A: Allocator> PackAccessMut<P> for PackVec<P, BPV, A>
         if index >= self.len {
             return None;
         }
-        let key = self.bpv.part_key(index);
-        let mask = value_mask(self.bpv.bits_per_value()).unwrap();
+        let key = self.order.part_key(index);
+        let mask = value_mask(self.order.bits_per_value()).unwrap();
         let part: &mut P = unsafe { &mut *self.as_mut_ptr().add(key.part_index) };
         let old_value = pack_span::get(*part, key.bit_index, mask);
         *part = pack_span::set(*part, key.bit_index, value, mask);
@@ -329,7 +334,7 @@ impl<P, BPV: BitsPerValue, A: Allocator> PackAccessMut<P> for PackVec<P, BPV, A>
     }
 }
 
-impl<P: PrimInt + fmt::Debug, BPV: BitsPerValue, A: Allocator> fmt::Debug for PackVec<P, BPV, A> {
+impl<P: PrimInt + fmt::Debug, O: PackOrder, A: Allocator> fmt::Debug for PackVec<P, O, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_span().fmt(f)
     }

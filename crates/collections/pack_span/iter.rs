@@ -2,30 +2,30 @@ use std::{marker::PhantomData, ops::Deref};
 
 use num_traits::PrimInt;
 
-use super::{BitsPerValue, get, value_mask};
+use super::{PackOrder, get, value_mask};
 
-pub struct PackIter<S, E, BPV: BitsPerValue> {
+pub struct PackIter<S, E, O: PackOrder> {
     parts: S,
     index: usize,
     end: usize,
-    bpv: BPV,
+    order: O,
     _marker: PhantomData<E>,
 }
 
-impl<S, E: PrimInt, BPV: BitsPerValue> PackIter<S, E, BPV> {
-    pub fn from_slice(parts: S, start: usize, len: usize, bpv: BPV) -> Self {
+impl<S, E: PrimInt, O: PackOrder> PackIter<S, E, O> {
+    pub fn from_slice(parts: S, start: usize, len: usize, order: O) -> Self {
         let end = start.checked_add(len).unwrap();
         Self {
             parts,
             index: start,
             end,
-            bpv,
+            order,
             _marker: PhantomData,
         }
     }
 }
 
-impl<S, P: PrimInt, E: PrimInt, BPV: BitsPerValue> Iterator for PackIter<S, E, BPV>
+impl<S, P: PrimInt, E: PrimInt, O: PackOrder> Iterator for PackIter<S, E, O>
 where
     S: Deref<Target = [P]>,
 {
@@ -37,10 +37,10 @@ where
         if index >= self.end {
             return None;
         }
-        let key = self.bpv.part_key(index);
+        let key = self.order.part_key(index);
         self.index = index + 1;
 
-        let mask = value_mask(self.bpv.bits_per_value()).unwrap();
+        let mask = value_mask(self.order.bits_per_value()).unwrap();
         let part = unsafe { *self.parts.get_unchecked(key.part_index) };
         Some(get(part, key.bit_index, mask))
     }
@@ -51,7 +51,7 @@ where
     }
 }
 
-impl<S, P: PrimInt, E: PrimInt, BPV: BitsPerValue> ExactSizeIterator for PackIter<S, E, BPV> where
+impl<S, P: PrimInt, E: PrimInt, O: PackOrder> ExactSizeIterator for PackIter<S, E, O> where
     S: Deref<Target = [P]>
 {
 }
