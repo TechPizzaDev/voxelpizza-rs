@@ -1,12 +1,3 @@
-mod pack_op;
-pub use pack_op::pack;
-
-mod unpack_op;
-pub use unpack_op::unpack;
-
-mod iter;
-pub mod part;
-
 use std::{
     fmt,
     marker::PhantomData,
@@ -16,15 +7,14 @@ use std::{
 
 use num_traits::PrimInt;
 
-use crate::{
-    OwnedCut, SplitCut,
-    pack_vec::{PackOrder, VarPackOrder},
+use super::{
+    part::{self, PackIndex, Part, PartKey, PartOffset, PartSize, part_count_ceil},
+    vec::{PackOrder, VarPackOrder},
 };
-
-use part::{PackIndex, Part, PartKey, PartOffset, PartSize, part_count_ceil};
+use crate::{OwnedCut, SplitCut};
 
 #[derive(Clone)]
-struct PackSpanInner {
+pub(super) struct PackSpanInner {
     ptr: NonNull<Part>,
     range: PackIndex,
 }
@@ -78,7 +68,7 @@ impl PackSpanInner {
     }
 
     #[inline]
-    fn consume(&mut self, amount: usize, values_per_part: PartSize) {
+    pub(super) fn consume(&mut self, amount: usize, values_per_part: PartSize) {
         unsafe {
             *self = self
                 .with_bounds(Bound::Included(&amount), Bound::Unbounded, values_per_part)
@@ -89,14 +79,14 @@ impl PackSpanInner {
 
 #[derive(Clone)]
 pub struct PackSpan<'a, O: PackOrder = VarPackOrder> {
-    inner: PackSpanInner,
-    order: O,
+    pub(super) inner: PackSpanInner,
+    pub(super) order: O,
     _ty: PhantomData<&'a [Part]>,
 }
 
 pub struct PackSpanMut<'a, O: PackOrder = VarPackOrder> {
-    inner: PackSpanInner,
-    order: O,
+    pub(super) inner: PackSpanInner,
+    pub(super) order: O,
     _ty: PhantomData<&'a mut [Part]>,
 }
 
@@ -433,9 +423,9 @@ impl<'a, O: PackOrder> fmt::Debug for PackSpanMut<'a, O> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{PackVec, pack_vec::ConstVec};
-
     use super::*;
+    
+    use crate::pack::vec::{ConstVec, PackVec};
 
     #[test]
     pub fn span_cut() {
@@ -475,7 +465,7 @@ mod tests {
 
         for n in 1..8 {
             dst.as_mut_slice().fill(0);
-            unpack(&mut dst, &src, 0, PartSize::new(n).unwrap());
+            crate::pack::unpack(&mut dst, &src, 0, PartSize::new(n).unwrap());
             println!("{:?}", dst);
         }
     }

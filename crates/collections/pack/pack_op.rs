@@ -1,7 +1,7 @@
 use num_traits::PrimInt;
 use seq_macro::seq;
 
-use super::PartSize;
+use super::part::PartSize;
 
 #[inline]
 pub fn pack<P, E>(dst: &mut [P], dst_offset: usize, src: &[E], value_bits: PartSize)

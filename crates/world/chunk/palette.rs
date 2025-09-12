@@ -5,12 +5,12 @@ use std::{
 };
 
 use collections::{
-    IndexMap, OwnedCut, PackVec,
-    pack_span::{
-        PackAccess, PackAccessMut, PackSpanMut,
+    IndexMap, OwnedCut,
+    pack::{
+        span::{PackAccess, PackAccessMut, PackSpanMut},
+        vec::{ConstPackOrder, ConstVec, PackOrder, PackVec, VarPackOrder},
         part::{Part, PartSize},
     },
-    pack_vec::{ConstPackOrder, ConstVec, PackOrder, VarPackOrder},
 };
 use iters::search::SliceSearch;
 use num_traits::PrimInt;

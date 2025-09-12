@@ -3,10 +3,8 @@
 #![feature(associated_type_defaults)]
 
 mod index_map;
-pub mod pack_span;
-pub mod pack_vec;
+pub mod pack;
 mod subslice;
 
 pub use index_map::*;
-pub use pack_vec::PackVec;
 pub use subslice::*;

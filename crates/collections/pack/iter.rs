@@ -1,6 +1,8 @@
-use crate::pack_span::{PackAccess, PackSpan, PackSpanMut, Part};
-
-use super::PackOrder;
+use super::{
+    span::{PackAccess, PackSpan, PackSpanMut},
+    vec::PackOrder,
+    part::Part,
+};
 
 impl<'a, O: PackOrder> Iterator for PackSpan<'a, O> {
     type Item = Part;
