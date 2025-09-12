@@ -1,7 +1,7 @@
 use super::{
-    span::{PackAccess, PackSpan, PackSpanMut},
-    vec::PackOrder,
+    order::PackOrder,
     part::Part,
+    span::{PackAccess, PackSpan, PackSpanMut},
 };
 
 impl<'a, O: PackOrder> Iterator for PackSpan<'a, O> {

@@ -7,9 +7,10 @@ use std::{
 use collections::{
     IndexMap, OwnedCut,
     pack::{
-        span::{PackAccess, PackAccessMut, PackSpanMut},
-        vec::{ConstPackOrder, ConstVec, PackOrder, PackVec, VarPackOrder},
+        order::{ConstPackOrder, PackOrder, VarPackOrder},
         part::{Part, PartSize},
+        span::{PackAccess, PackAccessMut, PackSpanMut},
+        vec::{ConstVec, PackVec},
     },
 };
 use iters::search::SliceSearch;

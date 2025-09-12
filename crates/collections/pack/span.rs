@@ -9,7 +9,7 @@ use num_traits::PrimInt;
 
 use super::{
     part::{self, PackIndex, Part, PartKey, PartOffset, PartSize, part_count_ceil},
-    vec::{PackOrder, VarPackOrder},
+    order::{PackOrder, VarPackOrder},
 };
 use crate::{OwnedCut, SplitCut};
 
