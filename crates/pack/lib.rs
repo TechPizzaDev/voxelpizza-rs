@@ -1,3 +1,5 @@
+#![feature(allocator_api)]
+
 mod fill_op;
 
 mod iter;

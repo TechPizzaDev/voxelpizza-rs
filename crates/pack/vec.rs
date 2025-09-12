@@ -6,13 +6,12 @@ use std::{
 use num_traits::PrimInt;
 use raw_vec::RawVec;
 
-use crate::pack::{
-    self,
+use super::{
     order::{ConstPackOrder, PackOrder, VarPackOrder},
-    part::{PackIndex, Part, PartSize, part_count_ceil},
+    part::{self, PackIndex, Part, PartSize, part_count_ceil},
     span::{PackAccess, PackAccessMut, PackSpan, PackSpanMut},
 };
-use crate::subslice::OwnedCut;
+use collections::OwnedCut;
 
 pub type ConstVec<T, const BPV: u8> = PackVec<ConstPackOrder<T, BPV>>;
 
@@ -141,7 +140,7 @@ impl<O: PackOrder, A: Allocator> PackVec<O, A> {
         let mask = self.order.value_bits().value_mask().unwrap();
         unsafe {
             let part = self.as_mut_ptr().add(key.part_index);
-            *part = pack::part::set(*part, key.bit_index, value, mask);
+            *part = part::set(*part, key.bit_index, value, mask);
             self.set_len(len + 1);
         }
     }
@@ -198,7 +197,7 @@ impl<O: PackOrder, A: Allocator> PackAccess for PackVec<O, A> {
         let key = self.order.part_key(index);
         let mask = self.order.value_bits().value_mask().unwrap();
         let part: Part = unsafe { *self.as_ptr().add(key.part_index) };
-        Some(pack::part::get(part, key.bit_index, mask))
+        Some(part::get(part, key.bit_index, mask))
     }
 }
 
@@ -211,8 +210,8 @@ impl<O: PackOrder, A: Allocator> PackAccessMut for PackVec<O, A> {
         let key = self.order.part_key(index);
         let mask = self.order.value_bits().value_mask().unwrap();
         let part: &mut Part = unsafe { &mut *self.as_mut_ptr().add(key.part_index) };
-        let old_value = pack::part::get(*part, key.bit_index, mask);
-        *part = pack::part::set(*part, key.bit_index, value, mask);
+        let old_value = part::get(*part, key.bit_index, mask);
+        *part = part::set(*part, key.bit_index, value, mask);
         Some(old_value)
     }
 }

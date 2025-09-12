@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::pack::part::{PartKey, PartSize};
+use super::part::{PartKey, PartSize};
 
 pub trait PackOrder: Copy {
     fn value_bits(&self) -> PartSize;

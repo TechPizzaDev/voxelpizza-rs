@@ -4,17 +4,15 @@ use std::{
     simd::{LaneCount, Mask, Simd, SimdElement, SupportedLaneCount, cmp::SimdPartialEq},
 };
 
-use collections::{
-    IndexMap, OwnedCut,
-    pack::{
-        order::{ConstPackOrder, PackOrder, VarPackOrder},
-        part::{Part, PartSize},
-        span::{PackAccess, PackAccessMut, PackSpanMut},
-        vec::{ConstVec, PackVec},
-    },
-};
+use collections::{IndexMap, OwnedCut};
 use iters::search::SliceSearch;
 use num_traits::PrimInt;
+use pack::{
+    order::{ConstPackOrder, PackOrder, VarPackOrder},
+    part::{Part, PartSize},
+    span::{PackAccess, PackAccessMut, PackSpanMut},
+    vec::{ConstVec, PackVec},
+};
 
 use crate::block::{BlockCoord, BlockId, BlockSize};
 

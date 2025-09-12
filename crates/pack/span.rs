@@ -8,10 +8,10 @@ use std::{
 use num_traits::PrimInt;
 
 use super::{
-    part::{self, PackIndex, Part, PartKey, PartOffset, PartSize, part_count_ceil},
     order::{PackOrder, VarPackOrder},
+    part::{self, PackIndex, Part, PartKey, PartOffset, PartSize, part_count_ceil},
 };
-use crate::{OwnedCut, SplitCut};
+use collections::{OwnedCut, SplitCut};
 
 #[derive(Clone)]
 pub(super) struct PackSpanInner {
@@ -423,9 +423,13 @@ impl<'a, O: PackOrder> fmt::Debug for PackSpanMut<'a, O> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    
-    use crate::pack::vec::{ConstVec, PackVec};
+    use collections::OwnedCut;
+
+    use crate::{
+        part::PartSize,
+        span::{PackAccess, PackAccessMut},
+        vec::{ConstVec, PackVec},
+    };
 
     #[test]
     pub fn span_cut() {
@@ -465,7 +469,7 @@ mod tests {
 
         for n in 1..8 {
             dst.as_mut_slice().fill(0);
-            crate::pack::unpack(&mut dst, &src, 0, PartSize::new(n).unwrap());
+            crate::unpack(&mut dst, &src, 0, PartSize::new(n).unwrap());
             println!("{:?}", dst);
         }
     }
