@@ -16,9 +16,9 @@ use collections::OwnedCut;
 pub type ConstVec<T, const BPV: u8> = PackVec<ConstPackOrder<T, BPV>>;
 
 /// Packed array of values. Each value consumes a specific amount of bits.
-pub struct PackVec<O: PackOrder = VarPackOrder, A: Allocator = Global> {
+pub struct PackVec<O: PackOrder = VarPackOrder<Part>, A: Allocator = Global> {
     parts: RawVec<Part, A>,
-    len: usize,
+    len: PackIndex,
     order: O,
 }
 
@@ -31,10 +31,10 @@ pub struct PackVec<O: PackOrder = VarPackOrder, A: Allocator = Global> {
 
 // TODO: resize in-place, changing BPV (maybe even generically, not specifically PackVec)
 
-impl PackVec<VarPackOrder> {
+impl PackVec<VarPackOrder<Part>> {
     #[inline]
     pub const fn new_var(value_bits: PartSize) -> Self {
-        Self::new(VarPackOrder::new::<Part>(value_bits))
+        Self::new(VarPackOrder::new(value_bits))
     }
 }
 impl<O: PackOrder> PackVec<O, Global> {
@@ -54,7 +54,7 @@ impl<O: PackOrder, A: Allocator> PackVec<O, A> {
     pub const fn new_in(order: O, alloc: A) -> Self {
         Self {
             parts: RawVec::new_in(alloc),
-            len: 0,
+            len: PackIndex::ZERO,
             order,
         }
     }
@@ -64,7 +64,7 @@ impl<O: PackOrder, A: Allocator> PackVec<O, A> {
         let capacity = part_count_ceil(capacity, order.values_per_part());
         Self {
             parts: RawVec::with_capacity_in(capacity, alloc),
-            len: 0,
+            len: PackIndex::ZERO,
             order,
         }
     }
@@ -84,19 +84,9 @@ impl<O: PackOrder, A: Allocator> PackVec<O, A> {
         unsafe { std::slice::from_raw_parts(self.as_ptr(), self.parts.capacity()) }
     }
 
-    /*
-    #[inline(always)]
-    const fn make_end_tail(vpp: PartSize, len: usize) -> (usize, PartOffset) {
-        let vpp = vpp.get() as usize;
-        let part_end = len.div_ceil(vpp);
-        (part_end, (len % vpp) as PartOffset)
-    }
-    */
-
     #[inline]
     pub fn as_span(&self) -> PackSpan<'_, O> {
-        let range = PackIndex::from_len(self.len).unwrap();
-        unsafe { PackSpan::from_raw_parts(self.parts.non_null(), range, self.order) }
+        unsafe { PackSpan::from_raw_parts(self.parts.non_null(), self.len, self.order) }
     }
 
     #[inline]
@@ -106,19 +96,20 @@ impl<O: PackOrder, A: Allocator> PackVec<O, A> {
 
     #[inline]
     pub fn as_span_mut(&mut self) -> PackSpanMut<'_, O> {
-        let range = PackIndex::from_len(self.len).unwrap();
-        unsafe { PackSpanMut::from_raw_parts(self.parts.non_null(), range, self.order) }
+        unsafe { PackSpanMut::from_raw_parts(self.parts.non_null(), self.len, self.order) }
     }
 
     #[inline]
     pub fn capacity(&self) -> usize {
-        self.parts.capacity() as usize * self.order.values_per_part().get() as usize
+        self.parts
+            .capacity()
+            .strict_mul(self.order.values_per_part().get())
     }
 
     #[inline]
     pub unsafe fn set_len(&mut self, new_len: usize) {
         debug_assert!(new_len <= self.capacity());
-        self.len = new_len;
+        self.len = PackIndex::from_len(new_len).unwrap();
     }
 
     #[inline(never)]
@@ -131,22 +122,22 @@ impl<O: PackOrder, A: Allocator> PackVec<O, A> {
 
     #[inline]
     pub fn push<E: PrimInt>(&mut self, value: E) {
-        let len = self.len;
+        let len = self.len();
         let key = self.order.part_key(len);
-        if key.part_index == self.parts.capacity() {
+        if key.part == self.parts.capacity() {
             self.parts.grow_one();
         }
 
         let mask = self.order.value_bits().value_mask().unwrap();
         unsafe {
-            let part = self.as_mut_ptr().add(key.part_index);
-            *part = part::set(*part, key.bit_index, value, mask);
+            let part = self.as_mut_ptr().add(key.part);
+            *part = part::set(*part, key.bit.get(), value, mask);
             self.set_len(len + 1);
         }
     }
 
     pub fn extend_with(&mut self, n: usize, value: Part) {
-        let len = self.len;
+        let len = self.len();
         let new_len = len.strict_add(n);
         self.reserve(n);
         unsafe {
@@ -181,37 +172,37 @@ impl<O: PackOrder, A: Allocator> PackAccess for PackVec<O, A> {
 
     #[inline]
     fn len(&self) -> usize {
-        self.len
+        usize::try_from(self.len.len()).unwrap()
     }
 
     #[inline]
     fn part_len(&self) -> usize {
-        part_count_ceil(self.len, self.order.values_per_part())
+        part_count_ceil(self.len(), self.order.values_per_part())
     }
 
     #[inline]
     fn get<E: PrimInt>(&self, index: usize) -> Option<E> {
-        if index >= self.len {
+        if index >= self.len() {
             return None;
         }
         let key = self.order.part_key(index);
         let mask = self.order.value_bits().value_mask().unwrap();
-        let part: Part = unsafe { *self.as_ptr().add(key.part_index) };
-        Some(part::get(part, key.bit_index, mask))
+        let part: Part = unsafe { *self.as_ptr().add(key.part) };
+        Some(part::get(part, key.bit.get(), mask))
     }
 }
 
 impl<O: PackOrder, A: Allocator> PackAccessMut for PackVec<O, A> {
     #[inline]
     fn set<E: PrimInt>(&mut self, index: usize, value: E) -> Option<E> {
-        if index >= self.len {
+        if index >= self.len() {
             return None;
         }
         let key = self.order.part_key(index);
         let mask = self.order.value_bits().value_mask().unwrap();
-        let part: &mut Part = unsafe { &mut *self.as_mut_ptr().add(key.part_index) };
-        let old_value = part::get(*part, key.bit_index, mask);
-        *part = part::set(*part, key.bit_index, value, mask);
+        let part: &mut Part = unsafe { &mut *self.as_mut_ptr().add(key.part) };
+        let old_value = part::get(*part, key.bit.get(), mask);
+        *part = part::set(*part, key.bit.get(), value, mask);
         Some(old_value)
     }
 }
@@ -219,5 +210,20 @@ impl<O: PackOrder, A: Allocator> PackAccessMut for PackVec<O, A> {
 impl<O: PackOrder, A: Allocator> fmt::Debug for PackVec<O, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_span().fmt(f)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{part::PartSize, span::PackAccess, vec::PackVec};
+
+    #[test]
+    #[inline(never)]
+    fn do_push() {
+        let mut vec = PackVec::new_var(PartSize::new(1).unwrap());
+        for _ in 0..256 {
+            vec.push(1);
+        }
+        assert_eq!(vec.len(), 256);
     }
 }

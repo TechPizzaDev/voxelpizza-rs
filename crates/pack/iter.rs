@@ -4,13 +4,15 @@ use super::{
     span::{PackAccess, PackSpan, PackSpanMut},
 };
 
+// TODO: "align_to" methods for SIMD or just Parts
+
 impl<'a, O: PackOrder> Iterator for PackSpan<'a, O> {
     type Item = Part;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(value) = self.get(0) {
-            self.inner.consume(1, self.order.values_per_part());
+            self.inner.consume(1, self.order);
             return Some(value);
         }
         None
@@ -30,7 +32,7 @@ impl<'a, O: PackOrder> Iterator for PackSpanMut<'a, O> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(value) = self.get(0) {
-            self.inner.consume(1, self.order.values_per_part());
+            self.inner.consume(1, self.order);
             return Some(value);
         }
         None

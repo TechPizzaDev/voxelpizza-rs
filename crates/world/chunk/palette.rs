@@ -353,8 +353,8 @@ impl ChunkPalette {
 
 // TODO: resize in-place
 fn resize_storage(data: &PackVec, value_bits: PartSize) -> PackVec {
-    let bpv = VarPackOrder::new::<Part>(value_bits);
-    let mut new_storage = PackVec::with_capacity(data.len(), bpv);
+    let order = VarPackOrder::new(value_bits);
+    let mut new_storage = PackVec::with_capacity(data.len(), order);
 
     let src_span = data.as_span();
     let mut dst_span = new_storage.as_span_mut();

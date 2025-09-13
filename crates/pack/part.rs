@@ -1,6 +1,6 @@
 use std::{hint::assert_unchecked, num::NonZeroU8};
 
-use num_traits::PrimInt;
+use num_traits::{Euclid, PrimInt};
 
 pub type Part = u64;
 
@@ -12,9 +12,8 @@ impl PartOffset {
     pub const MAX: Self = Self(NonZeroU8::new(64).unwrap());
 
     pub const fn new(value: usize) -> Option<Self> {
-        let value = value + 1;
         if value <= Self::MAX.get() {
-            Some(Self(NonZeroU8::new(value as u8).unwrap()))
+            Some(Self(NonZeroU8::new((value + 1) as u8).unwrap()))
         } else {
             None
         }
@@ -23,7 +22,7 @@ impl PartOffset {
     pub const fn get(self) -> usize {
         let val = self.0.get() - 1;
         unsafe {
-            assert_unchecked(val <= Self::MAX.0.get());
+            assert_unchecked(val < Self::MAX.0.get());
         }
         val as usize
     }
@@ -78,6 +77,8 @@ impl PartSize {
 pub struct PackIndex(u64);
 
 impl PackIndex {
+    pub const ZERO: PackIndex = Self(0);
+
     const START_BITS: u32 = Part::BITS.ilog2();
     const LEN_BITS: u32 = Part::BITS - Self::START_BITS;
 
@@ -103,7 +104,8 @@ impl PackIndex {
 
     #[inline]
     pub fn start(self) -> PartOffset {
-        PartOffset::new((self.0 & Self::START_MASK) as usize).unwrap()
+        let start = PartOffset::new((self.0 & Self::START_MASK) as usize);
+        unsafe { start.unwrap_unchecked() }
     }
 
     pub fn len(self) -> u64 {
@@ -113,21 +115,24 @@ impl PackIndex {
 
 #[derive(Clone, Copy, Debug)]
 pub struct PartKey {
-    pub part_index: usize,
+    pub part: usize,
 
-    pub bit_index: u32,
+    pub val: PartOffset,
+
+    pub bit: PartOffset,
 }
 
 impl PartKey {
     #[inline(always)]
-    pub fn new(index: usize, value_bits: PartSize, values_per_part: PartSize) -> Self {
-        let vpp = values_per_part.get();
-        let (part_index, val_index) = (index / vpp, index % vpp);
-        let bit_index = val_index as u32 * value_bits.get() as u32;
-        Self {
-            part_index,
-            bit_index,
-        }
+    pub fn new(index: usize, value_bits: PartSize, values_per_part: PartSize) -> Option<Self> {
+        let (part, rem) = index.div_rem_euclid(&values_per_part.get());
+        let val = PartOffset::new(rem)?;
+        let bit = PartOffset::new(rem * value_bits.get())?;
+        Some(Self {
+            part,
+            val,
+            bit,
+        })
     }
 }
 
@@ -153,24 +158,23 @@ where
 }
 
 #[inline(always)]
-pub fn get<P, E>(part: P, bit_index: u32, value_mask: E) -> E
+pub fn get<P, E>(part: P, bit_index: usize, value_mask: E) -> E
 where
     E: PrimInt,
     P: PrimInt,
 {
-    unsafe {
-        assert_unchecked(bit_index < (size_of::<P>() * 8) as u32);
-    }
-    E::from(part.unsigned_shr(bit_index) & P::from(value_mask).unwrap()).unwrap()
+    E::from(part.unsigned_shr(bit_index as u32) & P::from(value_mask).unwrap()).unwrap()
 }
 
 #[inline(always)]
-pub fn set<P, E>(part: P, bit_index: u32, value: E, value_mask: E) -> P
+pub fn set<P, E>(part: P, bit_index: usize, value: E, value_mask: E) -> P
 where
     E: PrimInt,
     P: PrimInt,
 {
-    let clear_mask = P::from(value_mask).unwrap().unsigned_shl(bit_index);
-    let set_mask = P::from(value & value_mask).unwrap().unsigned_shl(bit_index);
+    let clear_mask = P::from(value_mask).unwrap().unsigned_shl(bit_index as u32);
+    let set_mask = P::from(value & value_mask)
+        .unwrap()
+        .unsigned_shl(bit_index as u32);
     (part & clear_mask.not()) | set_mask
 }

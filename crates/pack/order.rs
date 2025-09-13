@@ -13,16 +13,17 @@ pub trait PackOrder: Copy {
     }
 
     #[inline]
-    fn part_key(&self, value_index: usize) -> PartKey {
-        PartKey::new(value_index, self.value_bits(), self.values_per_part())
+    fn part_key(&self, index: usize) -> PartKey {
+        PartKey::new(index, self.value_bits(), self.values_per_part()).unwrap()
     }
 }
 
 // TODO: print BitsPerValue::bits_per_part in Debug?
 #[derive(Debug)]
-pub struct VarPackOrder {
+pub struct VarPackOrder<P> {
     value_bits: PartSize,
     values_per_part: PartSize,
+    _ty: PhantomData<P>,
 }
 
 #[derive(Debug)]
@@ -30,23 +31,25 @@ pub struct ConstPackOrder<P: 'static, const BPV: u8> {
     _marker: PhantomData<P>,
 }
 
-impl VarPackOrder {
-    pub const fn new<P>(value_bits: PartSize) -> Self {
+impl<P> VarPackOrder<P> {
+    #[inline]
+    pub const fn new(value_bits: PartSize) -> Self {
         Self {
             value_bits,
             values_per_part: value_bits.values_per_part::<P>().unwrap(),
+            _ty: PhantomData,
         }
     }
 }
 
-impl Clone for VarPackOrder {
+impl<P> Clone for VarPackOrder<P> {
     #[inline]
     fn clone(&self) -> Self {
         Self { ..*self }
     }
 }
-impl Copy for VarPackOrder {}
-impl PackOrder for VarPackOrder {
+impl<P> Copy for VarPackOrder<P> {}
+impl<P> PackOrder for VarPackOrder<P> {
     #[inline]
     fn value_bits(&self) -> PartSize {
         self.value_bits
@@ -55,6 +58,12 @@ impl PackOrder for VarPackOrder {
     #[inline]
     fn values_per_part(&self) -> PartSize {
         self.values_per_part
+    }
+
+    #[inline]
+    fn part_key(&self, index: usize) -> PartKey {
+        let key = PartKey::new(index, self.value_bits, self.values_per_part);
+        unsafe { key.unwrap_unchecked() }
     }
 }
 

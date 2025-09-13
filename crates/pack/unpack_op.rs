@@ -1,4 +1,4 @@
-use num_traits::PrimInt;
+use num_traits::{Euclid, PrimInt};
 use seq_macro::seq;
 
 use super::part::PartSize;
@@ -44,8 +44,7 @@ where
     P: PrimInt,
 {
     let values_per_part = value_bits.values_per_part::<P>().unwrap().get();
-    let src_idx = src_offset / values_per_part;
-    let src_rem = src_offset % values_per_part;
+    let (src_idx, src_rem) = src_offset.div_rem_euclid(&values_per_part);
 
     // Widen mask here (E -> P), which helps LLVM to vectorize;
     // P will never contain bits outside E range, making unwraps no-op.

@@ -9,7 +9,7 @@ use num_traits::PrimInt;
 
 use super::{
     order::{PackOrder, VarPackOrder},
-    part::{self, PackIndex, Part, PartKey, PartOffset, PartSize, part_count_ceil},
+    part::{self, PackIndex, Part, PartKey, PartSize, part_count_ceil},
 };
 use collections::{OwnedCut, SplitCut};
 
@@ -26,19 +26,18 @@ impl PackSpanInner {
     }
 
     #[inline]
-    fn bit_len(&self, bits_per_value: PartSize) -> u64 {
-        self.range.len() * (bits_per_value.get() as u64)
+    fn bit_len(&self, value_bits: PartSize) -> u64 {
+        self.range.len() * (value_bits.get() as u64)
     }
 
     #[inline]
-    unsafe fn with_bounds(
-        &self,
-        start: Bound<&usize>,
-        end: Bound<&usize>,
-        values_per_part: PartSize,
+    fn with_bounds(
+        &mut self,
+        index: impl RangeBounds<usize>,
+        order: impl PackOrder,
     ) -> Result<Self, ()> {
         let len = self.len();
-        let start = match start {
+        let start = match index.start_bound() {
             Bound::Included(i) => *i,
             Bound::Excluded(i) => *i + 1,
             Bound::Unbounded => 0,
@@ -47,7 +46,7 @@ impl PackSpanInner {
             return Err(());
         }
 
-        let end = match end {
+        let end = match index.end_bound() {
             Bound::Included(i) => *i + 1,
             Bound::Excluded(i) => *i,
             Bound::Unbounded => len,
@@ -56,35 +55,29 @@ impl PackSpanInner {
             return Err(());
         }
 
-        let val_start = start + self.range.start().get();
-        let vpp = values_per_part.get();
-        let (new_offset, new_start) = (val_start / vpp, val_start % vpp);
         let new_len = end - start;
+        let key = order.part_key(start + self.range.start().get());
 
         Ok(Self {
-            ptr: unsafe { self.ptr.add(new_offset) },
-            range: PackIndex::from_range(PartOffset::new(new_start).unwrap(), new_len).unwrap(),
+            ptr: unsafe { self.ptr.add(key.part) },
+            range: PackIndex::from_range(key.val, new_len).unwrap(),
         })
     }
 
     #[inline]
-    pub(super) fn consume(&mut self, amount: usize, values_per_part: PartSize) {
-        unsafe {
-            *self = self
-                .with_bounds(Bound::Included(&amount), Bound::Unbounded, values_per_part)
-                .unwrap();
-        }
+    pub(super) fn consume(&mut self, amount: usize, order: impl PackOrder) {
+        *self = self.with_bounds(amount.., order).unwrap();
     }
 }
 
 #[derive(Clone)]
-pub struct PackSpan<'a, O: PackOrder = VarPackOrder> {
+pub struct PackSpan<'a, O: PackOrder = VarPackOrder<Part>> {
     pub(super) inner: PackSpanInner,
     pub(super) order: O,
     _ty: PhantomData<&'a [Part]>,
 }
 
-pub struct PackSpanMut<'a, O: PackOrder = VarPackOrder> {
+pub struct PackSpanMut<'a, O: PackOrder = VarPackOrder<Part>> {
     pub(super) inner: PackSpanInner,
     pub(super) order: O,
     _ty: PhantomData<&'a mut [Part]>,
@@ -204,14 +197,11 @@ impl<'a, O: PackOrder> PackSpanMut<'a, O> {
 
     #[inline]
     fn make_part(&self, index: usize) -> Option<PartKey> {
-        match index.checked_add(self.inner.range.start().get()) {
-            Some(index) => Some(PartKey::new(
-                index,
-                self.order.value_bits(),
-                self.order.values_per_part(),
-            )),
-            None => None,
+        if index >= self.len() {
+            return None;
         }
+        let val_index = index + self.inner.range.start().get();
+        Some(self.order.part_key(val_index))
     }
 }
 
@@ -255,14 +245,11 @@ impl<'a, O: PackOrder> PackSpan<'a, O> {
 
     #[inline]
     fn make_part(&self, index: usize) -> Option<PartKey> {
-        match index.checked_add(self.inner.range.start().get()) {
-            Some(index) => Some(PartKey::new(
-                index,
-                self.order.value_bits(),
-                self.order.values_per_part(),
-            )),
-            None => None,
+        if index >= self.len() {
+            return None;
         }
+        let val_index = index + self.inner.range.start().get();
+        Some(self.order.part_key(val_index))
     }
 }
 
@@ -271,13 +258,7 @@ impl<'a, I: RangeBounds<usize>, O: PackOrder> OwnedCut<I> for &'a PackSpan<'a, O
 
     #[inline]
     fn cut_checked(self, index: I) -> Option<Self::Output> {
-        match unsafe {
-            self.inner.with_bounds(
-                index.start_bound(),
-                index.end_bound(),
-                self.order.values_per_part(),
-            )
-        } {
+        match self.inner.clone().with_bounds(index, self.order) {
             Ok(inner) => Some(Self::Output { inner, ..*self }),
             Err(_) => None,
         }
@@ -288,14 +269,8 @@ impl<'a, I: RangeBounds<usize>, O: PackOrder> OwnedCut<I> for PackSpanMut<'a, O>
     type Output = PackSpanMut<'a, O>;
 
     #[inline]
-    fn cut_checked(self, index: I) -> Option<Self::Output> {
-        match unsafe {
-            self.inner.with_bounds(
-                index.start_bound(),
-                index.end_bound(),
-                self.order.values_per_part(),
-            )
-        } {
+    fn cut_checked(mut self, index: I) -> Option<Self::Output> {
+        match self.inner.with_bounds(index, self.order) {
             Ok(inner) => Some(Self::Output { inner, ..self }),
             Err(_) => None,
         }
@@ -307,13 +282,7 @@ impl<'a, 'b, I: RangeBounds<usize>, O: PackOrder> OwnedCut<I> for &'b mut PackSp
 
     #[inline]
     fn cut_checked(self, index: I) -> Option<Self::Output> {
-        match unsafe {
-            self.inner.with_bounds(
-                index.start_bound(),
-                index.end_bound(),
-                self.order.values_per_part(),
-            )
-        } {
+        match self.inner.with_bounds(index, self.order) {
             Ok(inner) => Some(Self::Output { inner, ..*self }),
             Err(_) => None,
         }
@@ -362,8 +331,8 @@ impl<'a, O: PackOrder> PackAccess for PackSpan<'a, O> {
     {
         let key = self.make_part(index)?;
         let mask = self.order.value_bits().value_mask().unwrap();
-        let part = unsafe { self.inner.ptr.add(key.part_index).read() };
-        Some(part::get(part, key.bit_index as u32, mask))
+        let part = unsafe { self.inner.ptr.add(key.part).read() };
+        Some(part::get(part, key.bit.get(), mask))
     }
 }
 
@@ -384,8 +353,8 @@ impl<'a, O: PackOrder> PackAccess for PackSpanMut<'a, O> {
     fn get<E: PrimInt>(&self, index: usize) -> Option<E> {
         let key = self.make_part(index)?;
         let mask = self.order.value_bits().value_mask().unwrap();
-        let part = unsafe { self.inner.ptr.add(key.part_index).read() };
-        Some(part::get(part, key.bit_index as u32, mask))
+        let part = unsafe { self.inner.ptr.add(key.part).read() };
+        Some(part::get(part, key.bit.get(), mask))
     }
 }
 
@@ -394,9 +363,9 @@ impl<'a, O: PackOrder> PackAccessMut for PackSpanMut<'a, O> {
     fn set<E: PrimInt>(&mut self, index: usize, value: E) -> Option<E> {
         let key = self.make_part(index)?;
         let mask = self.order.value_bits().value_mask().unwrap();
-        let part = unsafe { self.inner.ptr.add(key.part_index).as_mut() };
-        let old_value = part::get(*part, key.bit_index, mask);
-        *part = part::set(*part, key.bit_index, value, mask);
+        let part = unsafe { self.inner.ptr.add(key.part).as_mut() };
+        let old_value = part::get(*part, key.bit.get(), mask);
+        *part = part::set(*part, key.bit.get(), value, mask);
         Some(old_value)
     }
 
@@ -427,7 +396,7 @@ mod tests {
 
     use crate::{
         part::PartSize,
-        span::{PackAccess, PackAccessMut},
+        span::{PackAccess, PackAccessMut, PackSpan},
         vec::{ConstVec, PackVec},
     };
 
@@ -478,12 +447,36 @@ mod tests {
     #[inline(never)]
     pub fn span_iter() {
         let mut vec = PackVec::new_var(PartSize::new(2).unwrap());
-        vec.extend_with(33, 1);
-        vec.extend_with(33, 2);
-        vec.extend_with(33, 3);
+        vec.extend_with(333, 1);
+        vec.extend_with(333, 2);
+        vec.extend_with(333, 3);
 
         println!("{:?}", vec);
 
-        vec.as_span().eq(vec.as_span());
+        assert!(compare(vec.as_span(), vec.as_span()));
+        assert_eq!(sum(vec.as_span()), sum_v2(vec.as_span()));
+    }
+
+    #[inline(never)]
+    fn compare(a: PackSpan, b: PackSpan) -> bool {
+        a.eq(b)
+    }
+
+    #[inline(never)]
+    fn sum(a: PackSpan) -> u64 {
+        let mut sum: u64 = 0;
+        for value in a {
+            sum = sum.wrapping_add(value);
+        }
+        sum
+    }
+
+    #[inline(never)]
+    fn sum_v2(a: PackSpan) -> u64 {
+        let mut sum: u64 = 0;
+        for i in 0..a.len() {
+            sum = sum.wrapping_add(a.get(i).unwrap());
+        }
+        sum
     }
 }
