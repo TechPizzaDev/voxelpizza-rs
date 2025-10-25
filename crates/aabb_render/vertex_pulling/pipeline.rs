@@ -1,4 +1,3 @@
-use crate::CUBOID_SHADER_HANDLE;
 use crate::clipping_planes::GpuClippingPlaneRanges;
 use crate::{CuboidMaterial, cuboids::CuboidsTransform};
 
@@ -25,6 +24,7 @@ pub struct CuboidsPipelineKey {
 
 #[derive(Resource)]
 pub(crate) struct CuboidsPipeline {
+    shader: Handle<Shader>,
     layouts: CuboidsBindGroupLayouts,
     defs: CuboidsShaderDefs,
 }
@@ -131,13 +131,13 @@ impl SpecializedRenderPipeline for CuboidsPipeline {
         ];
 
         let vertex = VertexState {
-            shader: CUBOID_SHADER_HANDLE,
+            shader: self.shader.clone(),
             shader_defs: self.defs.vertex.clone(),
             entry_point: "vertex".into(),
             buffers: vec![],
         };
         let fragment = FragmentState {
-            shader: CUBOID_SHADER_HANDLE,
+            shader: self.shader.clone(),
             shader_defs: self.defs.fragment.clone(),
             entry_point: "fragment".into(),
             targets: vec![Some(ColorTargetState {
@@ -198,14 +198,18 @@ impl SpecializedRenderPipeline for CuboidsPipeline {
 
 pub fn prepare_cuboids_pipelines(
     mut commands: Commands,
+    assets: Res<AssetServer>,
     layouts: Res<CuboidsBindGroupLayouts>,
     shader_defs: Res<CuboidsShaderDefs>,
     pipeline_cache: Res<PipelineCache>,
     mut pipelines: ResMut<SpecializedRenderPipelines<CuboidsPipeline>>,
     msaa_targets: Query<(Entity, &ExtractedView, &Msaa)>,
 ) {
+    let shader = assets.load(crate::cuboid_shader_path());
+
     for (view_entity, view, msaa) in msaa_targets.iter() {
         let pipeline = CuboidsPipeline {
+            shader: shader.clone(),
             layouts: layouts.clone(),
             defs: shader_defs.clone(),
         };

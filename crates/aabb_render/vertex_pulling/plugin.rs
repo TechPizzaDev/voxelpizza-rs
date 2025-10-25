@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use super::buffers::*;
 use super::cuboid_cache::CuboidBufferCache;
 use super::draw::{AuxiliaryMeta, DrawCuboids, TransformsMeta, ViewMeta};
@@ -9,7 +11,7 @@ use super::queue::queue_cuboids;
 
 use crate::{CuboidMaterialMap, Cuboids};
 
-use bevy::asset::load_internal_asset;
+use bevy::asset::{AssetPath, embedded_asset, embedded_path};
 use bevy::core_pipeline::core_3d::Opaque3d;
 use bevy::prelude::*;
 use bevy::render::render_asset::RenderAssetPlugin;
@@ -18,8 +20,11 @@ use bevy::render::render_resource::SpecializedRenderPipelines;
 use bevy::render::view::{VisibilitySystems, check_visibility, prepare_view_uniforms};
 use bevy::render::{Render, RenderApp, RenderSet};
 
-pub(crate) const CUBOID_SHADER_HANDLE: Handle<Shader> =
-    Handle::weak_from_u128(0x9fb6578929a144009b980915ecfca5cd);
+pub(crate) fn cuboid_shader_path() -> AssetPath<'static> {
+    AssetPath::from_path(&embedded_path!("vertex_pulling/", "vertex_pulling.wgsl"))
+        .with_source("embedded")
+        .into_owned()
+}
 
 /// Renders the [`Cuboids`](crate::Cuboids) component using the "vertex pulling" technique.
 #[derive(Default)]
@@ -29,12 +34,7 @@ pub struct VertexPullingRenderPlugin {
 
 impl Plugin for VertexPullingRenderPlugin {
     fn build(&self, app: &mut App) {
-        load_internal_asset!(
-            app,
-            CUBOID_SHADER_HANDLE,
-            "vertex_pulling.wgsl",
-            Shader::from_wgsl
-        );
+        embedded_asset!(app, "vertex_pulling/", "vertex_pulling.wgsl");
 
         app.init_resource::<CuboidMaterialMap>();
 

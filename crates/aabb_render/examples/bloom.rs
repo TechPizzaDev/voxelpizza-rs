@@ -10,10 +10,7 @@ use smooth_bevy_cameras::{controllers::fps::*, LookTransformPlugin};
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(AssetPlugin {
-            watch_for_changes_override: Some(true),
-            ..Default::default()
-        }))
+        .add_plugins(DefaultPlugins)
         .insert_resource(ClearColor(Color::BLACK))
         .add_plugins((
             VertexPullingRenderPlugin { outlines: true },

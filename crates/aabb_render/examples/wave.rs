@@ -7,10 +7,7 @@ use aabb_render::{
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(AssetPlugin {
-            watch_for_changes_override: Some(true),
-            ..Default::default()
-        }))
+        .add_plugins(DefaultPlugins)
         .add_plugins((
             VertexPullingRenderPlugin { outlines: true },
             LookTransformPlugin,
