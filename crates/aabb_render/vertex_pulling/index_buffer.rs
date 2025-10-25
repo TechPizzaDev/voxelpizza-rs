@@ -1,5 +1,5 @@
 use bevy::{
-    asset::{Asset, Handle},
+    asset::{Asset, AssetId, Handle, weak_handle},
     ecs::system::lifetimeless::SRes,
     reflect::TypePath,
     render::{
@@ -14,13 +14,12 @@ use bytemuck::cast_slice;
 pub struct CuboidsIndexBuffer;
 
 pub(crate) const CUBE_INDICES_HANDLE: Handle<CuboidsIndexBuffer> =
-    Handle::weak_from_u128(17343092250772987267);
+    weak_handle!("8dae9723-1926-4dde-9bb2-e8bb52f5c9c1");
 
 // Only 3 faces are actually drawn.
 const NUM_CUBE_INDICES_USIZE: usize = 3 * 3 * 2;
 
-/// The indices for all triangles in a cuboid mesh (given 8 corner
-/// vertices).
+/// The indices for all triangles in a cuboid mesh (given 8 corner vertices).
 ///
 /// In addition to encoding the 3-bit cube corner index, we add 2 bits
 /// to indicate which of the 3 faces is being rendered.
@@ -43,6 +42,7 @@ impl RenderAsset for GpuCuboidsIndexBuffer {
 
     fn prepare_asset(
         _source_asset: Self::SourceAsset,
+        _asset_id: AssetId<Self::SourceAsset>,
         render_device: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
     ) -> Result<Self, bevy::render::render_asset::PrepareAssetError<Self::SourceAsset>> {
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {

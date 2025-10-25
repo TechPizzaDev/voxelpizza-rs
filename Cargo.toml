@@ -21,19 +21,22 @@ opt-level = 0
 opt-level = 2
 
 [workspace.dependencies.bevy]
-version = "0.15"
+version = "0.16"
 default-features = false
 features = [
-  "file_watcher", 
+  "async_executor",
+  "bevy_log",
   "dynamic_linking", 
+  "embedded_watcher",
+  "file_watcher", 
   "multi_threaded",
-  "embedded_watcher"
+  "std"
 ]
 
 [workspace.dependencies]
 bytemuck = { version = "1.16", features = ["derive"] }
 rand = "0.8.5"
 rand_xoshiro = "0.6"
-smooth-bevy-cameras = "0.13"
+smooth-bevy-cameras = "0.14"
 num-traits = "0.2"
 seq-macro = "0.3"

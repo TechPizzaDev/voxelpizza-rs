@@ -81,6 +81,6 @@ fn toggle_fps_controller(
     mut controller: Query<&mut FpsCameraController>,
 ) {
     if mouse_button_input.just_pressed(MouseButton::Left) {
-        controller.single_mut().enabled = true;
+        controller.single_mut().unwrap().enabled = true;
     }
 }

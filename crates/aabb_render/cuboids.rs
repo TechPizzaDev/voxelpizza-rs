@@ -1,5 +1,12 @@
 use bevy::{
-    math::Vec3A, prelude::*, render::{primitives::Aabb, render_resource::ShaderType, sync_world::SyncToRenderWorld}
+    math::Vec3A,
+    prelude::*,
+    render::{
+        primitives::Aabb,
+        render_resource::ShaderType,
+        sync_world::SyncToRenderWorld,
+        view::{self, VisibilityClass},
+    },
 };
 
 /// Value that determines the color of a [`Cuboid`] based on the associated
@@ -60,7 +67,8 @@ impl Cuboid {
 
 /// A set of cuboids to be extracted for rendering.
 #[derive(Clone, Component, Debug, Default)]
-#[require(Visibility, Transform, SyncToRenderWorld)]
+#[require(Visibility, VisibilityClass, Transform, SyncToRenderWorld)]
+#[component(on_add = view::add_visibility_class::<Cuboids>)]
 pub struct Cuboids {
     /// Instances to be rendered.
     pub instances: Vec<Cuboid>,

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use super::buffers::*;
 use super::cuboid_cache::CuboidBufferCache;
 use super::draw::{AuxiliaryMeta, DrawCuboids, TransformsMeta, ViewMeta};
@@ -9,7 +7,7 @@ use super::pipeline::*;
 use super::prepare::*;
 use super::queue::queue_cuboids;
 
-use crate::{CuboidMaterialMap, Cuboids};
+use crate::CuboidMaterialMap;
 
 use bevy::asset::{AssetPath, embedded_asset, embedded_path};
 use bevy::core_pipeline::core_3d::Opaque3d;
@@ -17,7 +15,7 @@ use bevy::prelude::*;
 use bevy::render::render_asset::RenderAssetPlugin;
 use bevy::render::render_phase::AddRenderCommand;
 use bevy::render::render_resource::SpecializedRenderPipelines;
-use bevy::render::view::{VisibilitySystems, check_visibility, prepare_view_uniforms};
+use bevy::render::view::prepare_view_uniforms;
 use bevy::render::{Render, RenderApp, RenderSet};
 
 pub(crate) fn cuboid_shader_path() -> AssetPath<'static> {
@@ -44,16 +42,11 @@ impl Plugin for VertexPullingRenderPlugin {
         app.world_mut()
             .resource_mut::<Assets<CuboidsIndexBuffer>>()
             .insert(CUBE_INDICES_HANDLE.id(), CuboidsIndexBuffer);
-
-        app.add_systems(
-            PostUpdate,
-            check_visibility::<With<Cuboids>>.in_set(VisibilitySystems::CheckVisibility),
-        );
     }
 
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
-        let maybe_msaa = world.query::<&Msaa>().get_single(world).ok().cloned();
+        let maybe_msaa = world.query::<&Msaa>().single(world).ok().cloned();
         let render_app = app.sub_app_mut(RenderApp);
 
         if let Some(msaa) = maybe_msaa {
