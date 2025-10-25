@@ -6,10 +6,20 @@ edition.workspace = true
 path = "./lib.rs"
 
 [dependencies]
-bevy = { workspace = true, features = ["bevy_core_pipeline", "bevy_render", "bevy_asset", "multi_threaded"] }
 smooth-bevy-cameras = { workspace = true }
 
 bytemuck = { workspace = true }
+
+[dependencies.bevy]
+workspace = true
+features = [
+    "bevy_asset",
+    "bevy_core_pipeline",
+    "bevy_render",
+    "bevy_window",
+    "tonemapping_luts",
+    "x11",
+]
 
 [[example]]
 name = "bloom"

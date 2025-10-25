@@ -8,6 +8,10 @@ members = [
   "crates/*",
 ]
 
+[profile.test]
+opt-level = 2
+debug-assertions = false
+
 # TODO: Enable a small amount of optimization in debug mode.
 [profile.dev]
 opt-level = 0
@@ -19,7 +23,12 @@ opt-level = 2
 [workspace.dependencies.bevy]
 version = "0.15"
 default-features = false
-features = ["file_watcher", "dynamic_linking"]
+features = [
+  "file_watcher", 
+  "dynamic_linking", 
+  "multi_threaded",
+  "embedded_watcher"
+]
 
 [workspace.dependencies]
 bytemuck = { version = "1.16", features = ["derive"] }
